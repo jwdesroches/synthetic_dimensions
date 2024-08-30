@@ -286,3 +286,38 @@ def estimate_ground_state_degeneracy_zero_J(N,M):
     # add documentation later
     
     return M * 2**(N/2)
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def construct_initial_hamiltonian(N, M, mu):
+    """
+    Construct the initial Hamiltonian H = -mu * sum_{i=0}^{N-1} c_{0,j}^\dagger c_{0,j}
+    
+    Parameters:
+    N (int): Number of real sites (synthetic levels)
+    M (int): Number of states per site
+    mu (float): Chemical potential
+    
+    Returns:
+    np.ndarray: The initial Hamiltonian matrix
+    """
+    dim = M**N
+    H = np.zeros((dim, dim), dtype=np.complex128)
+
+    # Precompute powers of M for faster state-to-index conversion
+    M_powers = np.array([M**i for i in range(N)])
+
+    # Helper function to convert state index to state representation
+    def index_to_state(index):
+        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
+
+    # Apply the term -mu * c_{0,j}^\dagger * c_{0,j}
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            if state[j] == 0:
+                H[alpha, alpha] -= mu
+
+    return H
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
