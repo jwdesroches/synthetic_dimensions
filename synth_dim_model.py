@@ -280,9 +280,7 @@ def exact_diagonalize(H, use_sparse = False, k = 1, verbose=False, check_reconst
             print("Error:\n", H - reconstruction)
 
         return eigenvalues, [eigenvectors[:, i] for i in range(H.shape[0])]
-
-
-
+    
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
 def create_H_key(formatted_states):
@@ -455,6 +453,7 @@ def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
     tuple: A tuple containing:
         - adiabatic_energies (np.ndarray): The adiabatic energies at each time step.
         - adiabatic_diff (np.ndarray): The difference between the adiabatic and true energies at each time step.
+        - adiabatic_wavefunctions (np.ndarray): The adiabatic wavefunctions at each time step.
         - overlaps_all_states (np.ndarray): Overlap between the adiabatically evolved wavefunction and all eigenstates.
         - true_energies (np.ndarray): True energies of the system at each time step.
         - energy_gaps (np.ndarray): Energy gaps between the ground and excited states at each time step.
@@ -468,10 +467,10 @@ def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
 
     times = np.linspace(0, t_total, int(t_total / dt))
 
-    eigenvalues_0, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
-    psi_0 = eigenvectors_0[0]  # Ground state of H0 (first column is the ground state)
+    _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
+    psi_0 = eigenvectors_0[0]
 
-    adiabatic_wavefunctions = [psi_0]
+    adiabatic_wavefunctions = []
     true_energies = []
     adiabatic_energies = []
     overlaps_all_states = []
@@ -505,6 +504,6 @@ def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
     true_energies = np.array(true_energies)
     energy_gaps = np.array(energy_gaps)
     
-    return adiabatic_energies, adiabatic_diff, overlaps_all_states, true_energies, energy_gaps, times
+    return adiabatic_energies, adiabatic_diff, adiabatic_wavefunctions, overlaps_all_states, true_energies, energy_gaps, times
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
