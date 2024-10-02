@@ -6,6 +6,7 @@ import numpy as np
 import copy
 from scipy.integrate import solve_ivp
 from scipy.sparse.linalg import eigsh
+from scipy.linalg import expm
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 # functions
@@ -395,99 +396,115 @@ def construct_initial_hamiltonian(N, M, mu):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_intermediate_hamiltonian(H0, Hf, s):
+def interpolate_hamiltonian(H0, Hf, t, t_total):
     """
-    Construct an intermediate Hamiltonian as a linear interpolation between H0 and Hf.
+    Interpolates between the initial Hamiltonian H0 and the final Hamiltonian Hf over time t. This function 
+    is used to create a time-dependent Hamiltonian that smoothly transitions from H0 to Hf.
     
     Parameters:
-    H0 (np.ndarray): Initial Hamiltonian (at s=0).
-    Hf (np.ndarray): Final Hamiltonian (at s=1).
-    s (float): Interpolation parameter between 0 and 1.
-    
+    H0 (np.ndarray): Initial Hamiltonian matrix.
+    Hf (np.ndarray): Final Hamiltonian matrix.
+    t (float): Current time step.
+    t_total (float): Total time for the adiabatic evolution.
+
     Returns:
-    np.ndarray: The interpolated Hamiltonian H(s) = H0 * (1-s) + Hf * s.
+    np.ndarray: The interpolated Hamiltonian matrix at time t, representing a linear combination of H0 and Hf.
     """
-    return H0 * (1 - s) + Hf * s
+    return (1 - t / t_total) * H0 + (t / t_total) * Hf
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def normalized_tdse(t, psi, H0, Hf, t_total, interpolation_type="linear"):
+def evolve_wavefunction(psi, H, dt, hbar=1.0):
     """
-    Solve the time-dependent Schrödinger equation (TDSE) with time-dependent Hamiltonian interpolation, while 
-    ensuring the wavefunction is normalized.
+    Evolves the wavefunction psi under the Hamiltonian H using a unitary time evolution operator U = exp(-iH * dt / hbar).
+    This function applies the time evolution over a time step dt.
     
     Parameters:
-    t (float): Current time.
-    psi (np.ndarray): Current wavefunction (complex vector).
-    H0 (np.ndarray): Initial Hamiltonian (at t=0).
-    Hf (np.ndarray): Final Hamiltonian (at t=t_total).
-    t_total (float): Total evolution time.
-    interpolation_type (str): Type of interpolation used for the Hamiltonian ("linear", "sine-squared", "smoothstep").
-    
+    psi (np.ndarray): The current wavefunction as a column vector.
+    H (np.ndarray): The Hamiltonian matrix representing the system at the current time step.
+    dt (float): Time step for the evolution.
+    hbar (float, optional): Reduced Planck's constant (default is 1.0).
+
     Returns:
-    np.ndarray: The time derivative of the wavefunction (dψ/dt), normalized and computed using the intermediate Hamiltonian.
+    np.ndarray: The evolved wavefunction after the time step dt.
     """
-    # normalize the wavefunction to prevent drift
-    psi = psi / np.linalg.norm(psi)
-    
-    # interpolate between H0 and Hf based on time and interpolation type
-    if interpolation_type == "sine-squared":
-        s = np.sin((np.pi / 2) * (t / t_total))**2  # sine-squared interpolation
-    elif interpolation_type == "linear":
-        s = t / t_total  # linear interpolation
-    elif interpolation_type == "smoothstep":
-        s = 3 * (t / t_total)**2 - 2 * (t / t_total)**3  # smoothstep (cubic) interpolation
-    
-    # construct the time-dependent hamiltonian
-    H_s = construct_intermediate_hamiltonian(H0, Hf, s)
-    
-    # compute the time derivative of the wavefunction
-    return -1j * H_s.dot(psi)
+    U = expm(-1j * H * dt)
+    psi = np.dot(U, psi)
+    return psi
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def evolve_system(H0, Hf, psi0, t_total, t_points, interpolation_type="sine-squared"):
+def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
     """
-    Evolve the quantum system under a time-dependent Hamiltonian from an initial state psi0.
+    Computes various adiabatic properties during the time evolution of a quantum system, starting with an 
+    initial Hamiltonian and ending with a final Hamiltonian. This function simulates the adiabatic evolution, 
+    computes energy levels, overlaps, and other properties at each time step.
     
     Parameters:
-    H0 (np.ndarray): Initial Hamiltonian (at t=0).
-    Hf (np.ndarray): Final Hamiltonian (at t=t_total).
-    psi0 (np.ndarray): Initial wavefunction at t=0.
-    t_total (float): Total evolution time.
-    t_points (int): Number of time points for evaluation.
-    interpolation_type (str): Type of interpolation used for the Hamiltonian ("linear", "sine-squared", "smoothstep").
-    
-    Returns:
-    np.ndarray: Time points where the solution was evaluated (array of floats).
-    np.ndarray: Array of wavefunctions (complex vectors) at each time point.
-    """
-    # define time points for evaluation
-    t_eval = np.linspace(0, t_total, t_points)
-    
-    # solve the TDSE using the solve_ivp function (Runge-Kutta 45 method)
-    sol = solve_ivp(
-        normalized_tdse, [0, t_total], psi0, t_eval=t_eval, 
-        args=(H0, Hf, t_total, interpolation_type), method="RK45",
-        rtol=1e-10, atol=1e-12  # Set high precision
-    )
-    
-    # return the evaluated time points and corresponding wavefunctions
-    return sol.t, sol.y
+    N (int): Number of real lattice sites (synthetic levels).
+    M (int): Number of states per site (synthetic levels per site).
+    mu (float): Chemical potential acting on the system.
+    init_J (float): Initial hopping amplitude for the system.
+    init_V (float): Initial interaction strength.
+    J (float): Final hopping amplitude for the system.
+    V (float): Final interaction strength.
+    t_total (float): Total time for the adiabatic evolution.
+    dt (float): Time step size for numerical evolution.
 
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def instantaneous_energy(H, psi):
-    """
-    Calculate the instantaneous energy of the system at a given time based on the current wavefunction and Hamiltonian.
-    
-    Parameters:
-    H (np.ndarray): Hamiltonian matrix at the current time.
-    psi (np.ndarray): Current wavefunction (complex vector).
-    
     Returns:
-    float: The instantaneous energy E = Re(ψ† H ψ), where ψ† is the conjugate transpose of ψ.
+    tuple: A tuple containing:
+        - adiabatic_energies (np.ndarray): The adiabatic energies at each time step.
+        - adiabatic_diff (np.ndarray): The difference between the adiabatic and true energies at each time step.
+        - overlaps_all_states (np.ndarray): Overlap between the adiabatically evolved wavefunction and all eigenstates.
+        - true_energies (np.ndarray): True energies of the system at each time step.
+        - energy_gaps (np.ndarray): Energy gaps between the ground and excited states at each time step.
+        - times (np.ndarray): The array of time points during the adiabatic evolution.
     """
-    return np.real(np.vdot(psi, H @ psi))
+    
+    n_excited_states = M**N
+
+    initial_hamiltonian = construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, init_J, init_V)
+    final_hamiltonian = construct_hamiltonian(N, M, J, V)
+
+    times = np.linspace(0, t_total, int(t_total / dt))
+
+    eigenvalues_0, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
+    psi_0 = eigenvectors_0[0]  # Ground state of H0 (first column is the ground state)
+
+    adiabatic_wavefunctions = [psi_0]
+    true_energies = []
+    adiabatic_energies = []
+    overlaps_all_states = []
+
+    psi = psi_0.copy()
+
+    for t in times:
+        instantaneous_hamiltonian = interpolate_hamiltonian(initial_hamiltonian, final_hamiltonian, t, t_total)
+        
+        eigenvalues, eigenvectors = exact_diagonalize(instantaneous_hamiltonian)
+        true_energies.append(eigenvalues)
+        
+        psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
+        psi = psi / np.linalg.norm(psi)
+        
+        adiabatic_wavefunctions.append(psi)
+        
+        adiabatic_energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
+        adiabatic_energies.append(adiabatic_energy)
+        
+        overlaps = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
+        overlaps_all_states.append(overlaps)
+
+    true_energies = np.array(true_energies)
+    overlaps_all_states = np.array(overlaps_all_states)
+
+    adiabatic_diff = adiabatic_energies - true_energies[:, 0]
+    adiabatic_diff = np.array(adiabatic_diff)
+    
+    energy_gaps = [eigenvalues - eigenvalues[0] for eigenvalues in true_energies]
+    true_energies = np.array(true_energies)
+    energy_gaps = np.array(energy_gaps)
+    
+    return adiabatic_energies, adiabatic_diff, overlaps_all_states, true_energies, energy_gaps, times
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
