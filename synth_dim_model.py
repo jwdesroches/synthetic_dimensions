@@ -507,3 +507,7 @@ def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
     return adiabatic_energies, adiabatic_diff, adiabatic_wavefunctions, overlaps_all_states, true_energies, energy_gaps, times
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
+
+def intermediate_hamiltonian(N, M, init_J, init_V, V, mu):
+    "test"
+    return construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, init_J, init_V)
