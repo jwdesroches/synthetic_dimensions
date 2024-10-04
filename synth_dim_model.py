@@ -332,7 +332,7 @@ def sigma_ij(i, j, ground_state_wavefunction, states, N, M):
             for k in range(dim):
                 if states[k][i] == m:  
                     if states[k][j] == n: 
-                        sigma += abs(m - n) * ground_state_wavefunction[k]**2
+                        sigma += abs(m - n) * np.linalg.norm(ground_state_wavefunction[k])**2
                     else:
                         sigma += 0
                 else:
