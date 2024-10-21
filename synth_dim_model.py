@@ -432,7 +432,7 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
+def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, J, V, t_total, dt, mu = 0):
     """
     Computes various adiabatic properties during the time evolution of a quantum system, starting with an 
     initial Hamiltonian and ending with a final Hamiltonian. This function simulates the adiabatic evolution, 
@@ -462,8 +462,9 @@ def calculate_adiabatic_properties(N, M, mu, init_J, init_V, J, V, t_total, dt):
     
     n_excited_states = M**N
 
-    initial_hamiltonian = construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, init_J, init_V)
-    final_hamiltonian = construct_hamiltonian(N, M, J, V)
+  
+    initial_hamiltonian = construct_initial_hamiltonian(N, M, init_mu) + construct_hamiltonian(N, M, init_J, init_V)
+    final_hamiltonian = construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, J, V)
 
     times = np.linspace(0, t_total, int(t_total / dt))
 
