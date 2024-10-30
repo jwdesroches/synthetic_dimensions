@@ -432,7 +432,7 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, J, V, t_total, dt, mu = 0):
+def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, final_J, final_V, final_mu = 0, t_total=10, dt=0.01, initial_state = None):
     """
     Computes various adiabatic properties during the time evolution of a quantum system, starting with an 
     initial Hamiltonian and ending with a final Hamiltonian. This function simulates the adiabatic evolution, 
@@ -464,17 +464,20 @@ def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, J, V, t_total,
 
   
     initial_hamiltonian = construct_initial_hamiltonian(N, M, init_mu) + construct_hamiltonian(N, M, init_J, init_V)
-    final_hamiltonian = construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, J, V)
+    final_hamiltonian = construct_initial_hamiltonian(N, M, final_mu) + construct_hamiltonian(N, M, final_J, final_V)
 
     times = np.linspace(0, t_total, int(t_total / dt))
 
-    _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
-    psi_0 = eigenvectors_0[0]
+    if np.all(initial_state) == None:
+        _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
+        psi_0 = eigenvectors_0[0]
+    else: 
+        psi_0 = initial_state
 
     adiabatic_wavefunctions = []
     true_energies = []
     adiabatic_energies = []
-    overlaps_all_states = []
+    adiabatic_overlaps = []
 
     psi = psi_0.copy()
 
@@ -493,10 +496,10 @@ def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, J, V, t_total,
         adiabatic_energies.append(adiabatic_energy)
         
         overlaps = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
-        overlaps_all_states.append(overlaps)
+        adiabatic_overlaps.append(overlaps)
 
     true_energies = np.array(true_energies)
-    overlaps_all_states = np.array(overlaps_all_states)
+    adiabatic_overlaps = np.array(adiabatic_overlaps)
 
     adiabatic_diff = adiabatic_energies - true_energies[:, 0]
     adiabatic_diff = np.array(adiabatic_diff)
@@ -505,7 +508,7 @@ def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, J, V, t_total,
     true_energies = np.array(true_energies)
     energy_gaps = np.array(energy_gaps)
     
-    return adiabatic_energies, adiabatic_diff, adiabatic_wavefunctions, overlaps_all_states, true_energies, energy_gaps, times
+    return adiabatic_energies, adiabatic_diff, adiabatic_wavefunctions, adiabatic_overlaps, true_energies, energy_gaps, times
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
