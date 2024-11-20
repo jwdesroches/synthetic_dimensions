@@ -13,93 +13,6 @@ from matplotlib.cm import get_cmap
 # --------------------------------------------------------------------------------------------------------------------------------------------
 # functions
 # --------------------------------------------------------------------------------------------------------------------------------------------
-
-def creation_operator(state, site, synthetic_level, N, M): 
-    """
-    Applies the creation operator to a given state at a specific site and synthetic level.
-    
-    Parameters:
-    state (list): List representing the current state of the system.
-    site (int): Site index where the operator is applied.
-    synthetic_level (int): Synthetic level for the creation operation.
-    N (int): Total number of sites.
-    M (int): Total number of synthetic levels.
-    
-    Returns:
-    list or int: Modified state with the creation operation applied, or 0 if operation is invalid.
-    """
-    
-    if state == 0:
-        return 0
-    if site not in range(0, N):
-        print("The site is not in range.")
-        return state
-    if synthetic_level not in range(0, M):
-        print("The synthetic level is not in range.")
-        return state
-    if state[site] is None:
-        state[site] = synthetic_level
-    else:
-        return 0
-    return state
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def annihilation_operator(state, site, synthetic_level, N, M):
-    """
-    Applies the annihilation operator to a given state at a specific site and synthetic level.
-    
-    Parameters:
-    state (list): List representing the current state of the system.
-    site (int): Site index where the operator is applied.
-    synthetic_level (int): Synthetic level for the annihilation operation.
-    N (int): Total number of sites.
-    M (int): Total number of synthetic levels.
-    
-    Returns:
-    list or int: Modified state with the annihilation operation applied, or 0 if operation is invalid.
-    """
-    
-    if state == 0:
-        return 0
-    if site not in range(0, N):
-        print("The site is not in range.")
-        return state
-    if synthetic_level not in range(0, M):
-        print("The synthetic level is not in range.")
-        return state
-    if state[site] == synthetic_level:
-        state[site] = None
-    else: 
-        return 0
-    return state
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def inner_product(state1, state2):
-    """
-    Computes the inner product of two states.
-    
-    Parameters:
-    state1 (list or int): First state in the inner product.
-    state2 (list or int): Second state in the inner product.
-    
-    Returns:
-    int: 1 if the states are identical, 0 otherwise.
-    """
-    
-    if state1 == 0:
-        return 0
-    elif state2 == 0:
-        return 0 
-    else:
-        if state1 == state2:
-            return 1
-        else:
-            return 0
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
 def enumerate_states(N, M):
     """
     Enumerates all possible states of a system with N lattice sites and M synthetic levels.
@@ -133,63 +46,6 @@ def enumerate_states(N, M):
 
     formatted_states = ["|" + ",".join(map(str, state)) + ">" for state in states]
     return states, formatted_states
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def construct_hamiltonian_slow(N, M, J, V):
-    """
-    Constructs the Hamiltonian matrix for a system with nearest-neighbor interactions and tunneling terms.
-
-    Parameters:
-    N (int): Number of lattice sites.
-    M (int): Number of synthetic levels.
-    J (float): Tunneling coefficient.
-    V (float): Interaction strength.
-
-    Returns:
-    np.ndarray: Hamiltonian matrix of size (M^N x M^N).
-    """
-    
-    neighbors = [(i, i+1) for i in range(N-1)]
-    H = np.zeros((M**N, M**N)) 
-    states, _ = enumerate_states(N=N, M=M)
-
-    for alpha, state1 in enumerate(states):
-        for beta, state2 in enumerate(states):
-            state1_copy = state1[:]
-            state2_copy = state2[:]
-
-            # tunneling term
-            for n in range(1, M):
-                for j in range(N):
-                    intermediate_state = state1_copy[:]
-                    intermediate_state = annihilation_operator(intermediate_state, site=j, synthetic_level=n, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=j, synthetic_level=n-1, N=N, M=M)
-                    H[alpha, beta] += -J * inner_product(intermediate_state, state2_copy)
-
-                    intermediate_state = state1_copy[:]
-                    intermediate_state = annihilation_operator(intermediate_state, site=j, synthetic_level=n-1, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=j, synthetic_level=n, N=N, M=M)
-                    H[alpha, beta] += -J * inner_product(intermediate_state, state2_copy)
-
-            # interaction term
-            for n in range(1, M):
-                for i, j in neighbors:
-                    intermediate_state = state1_copy[:]
-                    intermediate_state = annihilation_operator(intermediate_state, site=j, synthetic_level=n-1, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=j, synthetic_level=n, N=N, M=M)
-                    intermediate_state = annihilation_operator(intermediate_state, site=i, synthetic_level=n, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=i, synthetic_level=n-1, N=N, M=M)
-                    H[alpha, beta] += V * inner_product(intermediate_state, state2_copy)
-
-                    intermediate_state = state1_copy[:]
-                    intermediate_state = annihilation_operator(intermediate_state, site=i, synthetic_level=n-1, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=i, synthetic_level=n, N=N, M=M)
-                    intermediate_state = annihilation_operator(intermediate_state, site=j, synthetic_level=n, N=N, M=M)
-                    intermediate_state = creation_operator(intermediate_state, site=j, synthetic_level=n-1, N=N, M=M)
-                    H[alpha, beta] += V * inner_product(intermediate_state, state2_copy)
-
-    return H
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -344,22 +200,6 @@ def sigma_ij(i, j, ground_state_wavefunction, states, N, M):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def estimate_ground_state_degeneracy_zero_J(N, M):
-    """
-    Estimates the degeneracy of the ground state for a system with zero tunneling (J = 0).
-
-    Parameters:
-    N (int): Number of lattice sites.
-    M (int): Number of synthetic levels (states per site).
-
-    Returns:
-    float: Estimated ground state degeneracy at J = 0.
-    """
-    
-    return M * 2**(N / 2)
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
 def construct_initial_hamiltonian(N, M, mu):
     """
     Constructs the initial Hamiltonian with the term H = -mu * sum_{i=0}^{N-1} c_{0,j}^\dagger c_{0,j}, which 
@@ -396,24 +236,6 @@ def construct_initial_hamiltonian(N, M, mu):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def interpolate_hamiltonian(H0, Hf, t, t_total):
-    """
-    Interpolates between the initial Hamiltonian H0 and the final Hamiltonian Hf over time t. This function 
-    is used to create a time-dependent Hamiltonian that smoothly transitions from H0 to Hf.
-    
-    Parameters:
-    H0 (np.ndarray): Initial Hamiltonian matrix.
-    Hf (np.ndarray): Final Hamiltonian matrix.
-    t (float): Current time step.
-    t_total (float): Total time for the adiabatic evolution.
-
-    Returns:
-    np.ndarray: The interpolated Hamiltonian matrix at time t, representing a linear combination of H0 and Hf.
-    """
-    return (1 - t / t_total) * H0 + (t / t_total) * Hf
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
 def evolve_wavefunction(psi, H, dt, hbar=1.0):
     """
     Evolves the wavefunction psi under the Hamiltonian H using a unitary time evolution operator U = exp(-iH * dt / hbar).
@@ -431,92 +253,6 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
     U = expm(-1j * H * dt)
     psi = np.dot(U, psi)
     return psi
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def calculate_adiabatic_properties(N, M, init_mu, init_J, init_V, final_J, final_V, final_mu = 0, t_total=10, dt=0.01, initial_state = None):
-    """
-    Computes various adiabatic properties during the time evolution of a quantum system, starting with an 
-    initial Hamiltonian and ending with a final Hamiltonian. This function simulates the adiabatic evolution, 
-    computes energy levels, overlaps, and other properties at each time step.
-    
-    Parameters:
-    N (int): Number of real lattice sites (synthetic levels).
-    M (int): Number of states per site (synthetic levels per site).
-    mu (float): Chemical potential acting on the system.
-    init_J (float): Initial hopping amplitude for the system.
-    init_V (float): Initial interaction strength.
-    J (float): Final hopping amplitude for the system.
-    V (float): Final interaction strength.
-    t_total (float): Total time for the adiabatic evolution.
-    dt (float): Time step size for numerical evolution.
-
-    Returns:
-    tuple: A tuple containing:
-        - adiabatic_energies (np.ndarray): The adiabatic energies at each time step.
-        - adiabatic_diff (np.ndarray): The difference between the adiabatic and true energies at each time step.
-        - adiabatic_wavefunctions (np.ndarray): The adiabatic wavefunctions at each time step.
-        - overlaps_all_states (np.ndarray): Overlap between the adiabatically evolved wavefunction and all eigenstates.
-        - true_energies (np.ndarray): True energies of the system at each time step.
-        - energy_gaps (np.ndarray): Energy gaps between the ground and excited states at each time step.
-        - times (np.ndarray): The array of time points during the adiabatic evolution.
-    """
-    
-    n_excited_states = M**N
-
-  
-    initial_hamiltonian = construct_initial_hamiltonian(N, M, init_mu) + construct_hamiltonian(N, M, init_J, init_V)
-    final_hamiltonian = construct_initial_hamiltonian(N, M, final_mu) + construct_hamiltonian(N, M, final_J, final_V)
-
-    times = np.linspace(0, t_total, int(t_total / dt))
-
-    if np.all(initial_state) == None:
-        _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
-        psi_0 = eigenvectors_0[0]
-    else: 
-        psi_0 = initial_state
-
-    adiabatic_wavefunctions = []
-    true_energies = []
-    adiabatic_energies = []
-    adiabatic_overlaps = []
-
-    psi = psi_0.copy()
-
-    for t in times:
-        instantaneous_hamiltonian = interpolate_hamiltonian(initial_hamiltonian, final_hamiltonian, t, t_total)
-        
-        eigenvalues, eigenvectors = exact_diagonalize(instantaneous_hamiltonian)
-        true_energies.append(eigenvalues)
-        
-        psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
-        psi = psi / np.linalg.norm(psi)
-        
-        adiabatic_wavefunctions.append(psi)
-        
-        adiabatic_energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
-        adiabatic_energies.append(adiabatic_energy)
-        
-        overlaps = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
-        adiabatic_overlaps.append(overlaps)
-
-    true_energies = np.array(true_energies)
-    adiabatic_overlaps = np.array(adiabatic_overlaps)
-
-    adiabatic_diff = adiabatic_energies - true_energies[:, 0]
-    adiabatic_diff = np.array(adiabatic_diff)
-    
-    energy_gaps = [eigenvalues - eigenvalues[0] for eigenvalues in true_energies]
-    true_energies = np.array(true_energies)
-    energy_gaps = np.array(energy_gaps)
-    
-    return adiabatic_energies, adiabatic_diff, adiabatic_wavefunctions, adiabatic_overlaps, true_energies, energy_gaps, times
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def intermediate_hamiltonian(N, M, init_J, init_V, V, mu):
-    "test"
-    return construct_initial_hamiltonian(N, M, mu) + construct_hamiltonian(N, M, init_J, init_V)
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -686,3 +422,5 @@ def make_linear_stepped_routines(J_V_ratios, mu_V_ratios, time_array, dt):
     mu_V_ratio_routine = np.concatenate(mu_V_ratio_steps)
 
     return concatenated_times, J_V_ratio_routine, mu_V_ratio_routine
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
