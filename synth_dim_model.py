@@ -616,55 +616,43 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
         - true_energies (np.ndarray): Eigenvalues of the instantaneous Hamiltonian at each time step.
         - energy_gaps (np.ndarray): Energy gaps between each eigenvalue and the ground state energy at each time step.
     """
+    
     n_excited_states = M**N
     initial_hamiltonian = construct_rescaled_hamiltonian(N, M, V, mu_V_ratio_routine[0], J_V_ratio_routine[0])
     
-    # Determine the initial state
     if initial_state is None:
         _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
-        psi_0 = eigenvectors_0[0]  # Start with the ground state
+        psi_0 = eigenvectors_0[0]
     else:
         psi_0 = initial_state
 
-    # Initialize storage lists
     adiabatic_energies = []
     adiabatic_wavefunctions = []
     adiabatic_probabilities = []
     adiabatic_overlaps = []
     true_energies = []
 
-    # Start with the initial state
     psi = psi_0.copy()
-
-    # Time evolution loop
     for index, t in enumerate(times):
-        # Construct instantaneous Hamiltonian at the current time step
         instantaneous_hamiltonian = construct_rescaled_hamiltonian(N, M, V, mu_V_ratio_routine[index], J_V_ratio_routine[index])
         
-        # Compute exact eigenvalues and eigenvectors
         eigenvalues, eigenvectors = exact_diagonalize(instantaneous_hamiltonian)
         true_energies.append(eigenvalues)
         
-        # Evolve the wavefunction
         psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
-        psi = psi / np.linalg.norm(psi)  # Normalize the wavefunction
+        psi = psi / np.linalg.norm(psi)  
         
-        # Store the evolved wavefunction
         adiabatic_wavefunctions.append(psi)
         
-        # Compute adiabatic energy
         adiabatic_energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
         adiabatic_energies.append(adiabatic_energy)
         
-        # Compute overlaps and probabilities with instantaneous eigenstates
         overlap = [np.dot(np.conj(eigenvectors[i]).T, psi) for i in range(n_excited_states)] 
         probability = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
                
         adiabatic_probabilities.append(probability)
         adiabatic_overlaps.append(overlap)
 
- 
-    # Convert collected data to arrays
     adiabatic_energies = np.array(adiabatic_energies)
     adiabatic_wavefunctions = np.array(adiabatic_wavefunctions)
     adiabatic_probabilities = np.array(adiabatic_probabilities)
@@ -675,132 +663,26 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def multistep_adiabatic_evolution(N, M, V, dt, mu_V_ratio_steps, J_V_ratio_steps, step_times):
+def make_linear_stepped_routines(J_V_ratios, mu_V_ratios, time_array, dt):
+    # to do: documentation
+    # tl;dr makes linear stepped routine (start here, end here for each step linearly)
     
-    num_steps = len(step_times)
-    results = []
-    initial_state = None
-    accumulated_time = 0
+    if len(J_V_ratios) != len(mu_V_ratios) or len(J_V_ratios) != len(time_array):
+        raise ValueError("The length of J_V_ratios, mu_V_ratios, and time_array must be equal.")
+    
+    num_steps = len(time_array)
+    
+    times = []
+    start_time = 0
+    for t in time_array:
+        times.append(np.linspace(start_time, start_time + t, int(t // dt)))
+        start_time += t
+    concatenated_times = np.concatenate(times)
 
-    for i in range(num_steps):
-        total_time = step_times[i]
-        total_steps = int(total_time / dt)
-        times = np.linspace(0, total_time, total_steps)
-        mu_V_ratio_routine = np.linspace(mu_V_ratio_steps[i][0], mu_V_ratio_steps[i][-1], total_steps) # simple linear interpolation
-        J_V_ratio_routine = np.linspace(J_V_ratio_steps[i][0], J_V_ratio_steps[i][-1], total_steps) # simple linear interpolation
+    J_V_ratio_steps = [np.linspace(J_V_ratios[i][0], J_V_ratios[i][1], int(time_array[i] // dt)) for i in range(num_steps)]
+    mu_V_ratio_steps = [np.linspace(mu_V_ratios[i][0], mu_V_ratios[i][1], int(time_array[i] // dt)) for i in range(num_steps)]
 
-        adiabatic_energies, adiabatic_wavefunctions, adiabatic_probabilities, adiabatic_overlaps, true_energies = \
-            simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine, times, dt=dt, initial_state=initial_state)
-        
-        results.append({
-            "times": times + accumulated_time,
-            "adiabatic_probabilities": adiabatic_probabilities,
-            "adiabatic_wavefunctions": adiabatic_wavefunctions,
-            "adiabatic_energies": adiabatic_energies,
-            "adiabatic_overlaps": adiabatic_overlaps,
-            "true_energies": true_energies
-        })
-        
-        initial_state = adiabatic_wavefunctions[-1]
-        accumulated_time += total_time
+    J_V_ratio_routine = np.concatenate(J_V_ratio_steps)
+    mu_V_ratio_routine = np.concatenate(mu_V_ratio_steps)
 
-    return results
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def plot_multistep_adiabatic_evolution_results(results, N, M, J_V_ratio_steps, step_times):
-    # Plotting adiabatic state probabilities
-    fig, ax = plt.subplots()
-    colors = get_cmap("gist_rainbow", M**N)
-    
-    for index in range(M**N):
-        for step_count, step_result in enumerate(results):
-            times = step_result["times"]
-            probabilities = step_result["adiabatic_probabilities"][:, index]
-            color = "k" if index == 0 else colors(index)
-            label = "Ground State" if (index == 0)&(step_count == len(results)-1) else ""
-            
-            ax.plot(times, probabilities, color=color, label=label)
-    
-    # Add vertical lines indicating the boundaries between steps
-    accumulated_time = 0
-    for time in step_times[:-1]: 
-        accumulated_time += time
-        ax.axvline(accumulated_time, linestyle="--", color="k")
-    
-    ax.grid()
-    ax.set_title(f"Adiabatic Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_steps[-1][-1]}$")
-    ax.set_xlabel("Time [$t/|V|$]")
-    ax.set_ylabel("Probability")
-    ax.legend()
-
-    # Plotting adiabatic energies vs true energies
-    fig, ax = plt.subplots()
-    cmap = get_cmap("gist_rainbow", M**N)
-    
-    
-    for idx in range(len(results)):
-        for idx2 in range(M**N):
-            ax.plot(results[idx]["times"], results[idx]["true_energies"][:, idx2], color=cmap(idx2))
-        
-        if idx == len(results)-1:
-            ax.plot(results[idx]["times"], results[idx]["adiabatic_energies"], '--k', label="Adiabatic Energy")
-        else:
-            ax.plot(results[idx]["times"], results[idx]["adiabatic_energies"], '--k')
-        
-        ax.legend(loc="upper center")
-        ax.set_title(f"Energies: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_steps[-1][-1]}$")
-        ax.set_xlabel("Time [$t/|V|$]")
-        ax.set_ylabel("Energy [$E/|V|$]")
-    
-    accumulated_time = 0
-    for time in step_times[:-1]: 
-        accumulated_time += time
-        ax.axvline(accumulated_time, linestyle="--", color="k")
-
-    fig, ax = plt.subplots()
-    
-    for idx in range(len(results)):
-        for idx2 in range(M**N):
-            if idx2 == 0:
-                continue
-            ax.plot(results[idx]["times"], np.real(results[idx]["adiabatic_overlaps"][:, idx2]), '.', color=cmap(idx2))
-        
-        if idx == len(results)-1:
-            ax.plot(results[idx]["times"], np.real(results[idx]["adiabatic_overlaps"][:, 0]), '.k', label="Ground State")
-        else:
-            ax.plot(results[idx]["times"], np.real(results[idx]["adiabatic_overlaps"][:, 0]), '.k')
-        
-        ax.legend(loc="lower center")
-        ax.set_title(f"$\\Re[<\\psi_i|\\psi_a>]$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_steps[-1][-1]}$")
-        ax.set_xlabel("Time [$t/|V|$]")
-        ax.set_ylabel("Real Overlap")
-        
-    accumulated_time = 0
-    for time in step_times[:-1]: 
-        accumulated_time += time
-        ax.axvline(accumulated_time, linestyle="--", color="k")
-    
-    # Plotting imaginary part of overlaps
-    fig, ax = plt.subplots()
-    
-    for idx in range(len(results)):
-        for idx2 in range(M**N):
-            if idx2 == 0:
-                continue
-            ax.plot(results[idx]["times"], np.imag(results[idx]["adiabatic_overlaps"][:, idx2]), ".", color=cmap(idx2))
-        
-        if idx == len(results)-1:
-            ax.plot(results[idx]["times"], np.imag(results[idx]["adiabatic_overlaps"][:, 0]), '.k', label="Ground State")
-        else:
-            ax.plot(results[idx]["times"], np.imag(results[idx]["adiabatic_overlaps"][:, 0]), '.k')
-        
-        ax.legend(loc="lower center")
-        ax.set_title(f"$\\Im[<\\psi_i|\\psi_a>]$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_steps[-1][-1]}$")
-        ax.set_xlabel("Time [$t/|V|$]")
-        ax.set_ylabel("Imaginary Overlap")
-        
-    accumulated_time = 0
-    for time in step_times[:-1]: 
-        accumulated_time += time
-        ax.axvline(accumulated_time, linestyle="--", color="k")
+    return concatenated_times, J_V_ratio_routine, mu_V_ratio_routine
