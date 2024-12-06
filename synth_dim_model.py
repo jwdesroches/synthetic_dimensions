@@ -396,6 +396,92 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
     true_energies = np.array(true_energies)
         
     return adiabatic_energies, adiabatic_wavefunctions, adiabatic_probabilities, adiabatic_overlaps, true_energies
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def plot_adiabatic_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio_routine, time_array = None, plot_probability = True, plot_gap = True, plot_overlaps = True, plot_sigma = True):
+    # to do: add documentation
+    # tl;dr takes results from simulate_adiabatic_evolution() and and makes plots
+    
+    adiabatic_energies, adiabatic_wavefunctions, adiabatic_probabilities, adiabatic_overlaps, true_energies = results
+    colors = get_cmap("gist_rainbow", M**N)
+    
+    if plot_probability == True:
+        fig, ax = plt.subplots()
+        for index in range(M**N):
+            if index == 0:
+                ax.plot(times, adiabatic_probabilities[:,index], color = "k", label = "Ground State")
+            elif index == 1:
+                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index), label = "1st Excited State")
+            elif index == 2:
+                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index), label = "2nd Excited State") 
+            else: 
+                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index))
+        ax.set_ylim(-0.1,1.1)
+        ax.legend(loc = "center left")
+        ax.set_title(f"Adiabatic Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.set_ylabel("State Probability")
+        ax.grid()
+        fig.tight_layout()
+        if time_array is not None:
+            accumulated_time = 0
+            for time in time_array:
+                ax.axvline(accumulated_time, color = "k", linestyle = "--")
+                accumulated_time += time
+    
+    if plot_gap == True:
+        fig, ax = plt.subplots()
+        for index in range(M**N):
+            ax.plot(times, true_energies[:,index]-true_energies[:,0], color = colors(index))   
+        ax.plot(times, adiabatic_energies-true_energies[:,0], color = "k", label = "Adiabatic Gap")
+        ax.legend(loc = "upper center")
+        ax.set_title(f"Adiabatic Gap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.set_ylabel("Energy [$E/|V|$]")
+        fig.tight_layout()
+        if time_array is not None:
+            accumulated_time = 0
+            for time in time_array:
+                ax.axvline(accumulated_time, color = "k", linestyle = "--")
+                accumulated_time += time
+
+    if plot_overlaps == True:
+        fig, (ax1,ax2) = plt.subplots(nrows = 2, sharex=True)
+        for index in range(M**N):
+            if index == 0:
+                ax1.plot(times, np.real(adiabatic_overlaps[:,0]), '.', color = "k")
+                ax2.plot(times, np.imag(adiabatic_overlaps[:,0]), '.', color = "k")
+            else:    
+                ax1.plot(times, np.real(adiabatic_overlaps[:,index]), '.', color = colors(index))
+                ax2.plot(times, np.imag(adiabatic_overlaps[:,index]), '.', color = colors(index))
+            ax1.set_ylabel("$\Re$ Component")
+            ax2.set_ylabel("$\Im$ Component")
+        ax2.set_xlabel("Time [$t/|V|$]")
+        fig.suptitle(f"Adiabatic Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        fig.tight_layout()
+        if time_array is not None:
+            accumulated_time = 0
+            for time in time_array:
+                ax.axvline(accumulated_time, color = "k", linestyle = "--")
+                accumulated_time += time
+
+    if plot_sigma == True:
+        fig, ax = plt.subplots()
+        states, _ = enumerate_states(N, M)
+        sigmas = []
+        for wavefunction in adiabatic_wavefunctions:
+            sigmas += [sigma_ij(0, 1, ground_state_wavefunction = wavefunction, states = states, N=N, M=M)/M]
+        ax.plot(times, sigmas, "-k")
+        ax.set_title(f"Adiabatic $\sigma$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_ylabel("$\sigma^{01}/M$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.grid()
+        if time_array is not None:
+            accumulated_time = 0
+            for time in time_array:
+                ax1.axvline(accumulated_time, color = "k", linestyle = "--")
+                ax2.axvline(accumulated_time, color = "k", linestyle = "--")
+                accumulated_time += time
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -411,12 +497,15 @@ def make_linear_stepped_routines(J_V_ratios, mu_V_ratios, time_array, dt):
     times = []
     start_time = 0
     for t in time_array:
-        times.append(np.linspace(start_time, start_time + t, int(t // dt)))
+    
+        time_array = np.linspace(start_time, start_time + t, num = int(t / dt))
+        times.append(time_array)
         start_time += t
+        
     concatenated_times = np.concatenate(times)
 
-    J_V_ratio_steps = [np.linspace(J_V_ratios[i][0], J_V_ratios[i][1], int(time_array[i] // dt)) for i in range(num_steps)]
-    mu_V_ratio_steps = [np.linspace(mu_V_ratios[i][0], mu_V_ratios[i][1], int(time_array[i] // dt)) for i in range(num_steps)]
+    J_V_ratio_steps = [np.linspace(J_V_ratios[i][0], J_V_ratios[i][1], int(time_array[i] / dt)) for i in range(num_steps)]
+    mu_V_ratio_steps = [np.linspace(mu_V_ratios[i][0], mu_V_ratios[i][1], int(time_array[i] / dt)) for i in range(num_steps)]
 
     J_V_ratio_routine = np.concatenate(J_V_ratio_steps)
     mu_V_ratio_routine = np.concatenate(mu_V_ratio_steps)
