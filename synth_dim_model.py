@@ -101,7 +101,7 @@ def construct_hamiltonian(N, M, J, V):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def exact_diagonalize(H, use_sparse = False, k = 1, verbose=False, check_reconstruction=False):
+def exact_diagonalize(H, use_sparse = False, k = 1, verbose=False):
     """
     Diagonalizes a Hermitian matrix using numpy's `eigh()` method.
 
@@ -130,12 +130,6 @@ def exact_diagonalize(H, use_sparse = False, k = 1, verbose=False, check_reconst
         if verbose:
             print("Eigenvalues:\n", eigenvalues)
             print("Eigenvectors:\n", eigenvectors)
-
-        if check_reconstruction:
-            reconstruction = np.matmul(eigenvectors, np.matmul(np.diag(eigenvalues), np.linalg.inv(eigenvectors)))
-            print("Original matrix:\n", H)
-            print("Reconstructed matrix:\n", reconstruction)
-            print("Error:\n", H - reconstruction)
 
         return eigenvalues, [eigenvectors[:, i] for i in range(H.shape[0])]
     
@@ -327,10 +321,11 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine, times, dt, initial_state=None):
+def simulate_time_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine, times, dt, initial_state=None):
     """
-    Simulates the adiabatic evolution of a quantum system by evolving a wavefunction under a time-dependent Hamiltonian.
-    Tracks the evolution of wavefunctions, energies, overlaps, and probabilities throughout the process.
+    Simulates the unitary time evolution of a quantum system by evolving a wavefunction under a time-dependent Hamiltonian,
+    governed by J/V(t) and mu/V(t). Tracks the evolution of wavefunctions, energies, overlaps, and probabilities throughout 
+    the process.
 
     Parameters:
     N (int): Number of sites in the system.
@@ -339,16 +334,16 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
     mu_V_ratio_routine (list or np.ndarray): Time-dependent values of the chemical potential ratio (mu/V).
     J_V_ratio_routine (list or np.ndarray): Time-dependent values of the tunneling ratio (J/V).
     times (list or np.ndarray): Discrete time steps over which the evolution is simulated.
-    dt (float, optional): Time step size for evolution (default is 0.1).
+    dt (float, optional): Time step size for evolution.
     initial_state (np.ndarray, optional): Initial wavefunction as a column vector. If None, uses the ground state of the initial Hamiltonian.
 
     Returns:
     tuple: A tuple containing:
-        - adiabatic_energies (list): Energies of the evolved state at each time step.
-        - adiabatic_diff (np.ndarray): Difference between adiabatic energies and the ground state energy at each time step.
-        - adiabatic_wavefunctions (list): Wavefunctions evolved adiabatically over the simulation.
-        - adiabatic_probabilities (np.ndarray): Probabilities of projection onto each eigenstate at each time step.
-        - adiabatic_overlaps (np.ndarray): Overlaps of the evolved state with each instantaneous eigenstate at each time step.
+        - energies (list): Energies of the evolved state at each time step.
+        - energy_diff (np.ndarray): Difference between time evolved energies and the ground state energy at each time step.
+        - time_evolved_wavefunctions (list): Wavefunctions evolved over the simulation.
+        - state_probabilities (np.ndarray): Probabilities of projection onto each eigenstate at each time step.
+        - state_overlaps (np.ndarray): Overlaps of the evolved state with each instantaneous eigenstate at each time step.
         - true_energies (np.ndarray): Eigenvalues of the instantaneous Hamiltonian at each time step.
         - energy_gaps (np.ndarray): Energy gaps between each eigenvalue and the ground state energy at each time step.
     """
@@ -362,10 +357,10 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
     else:
         psi_0 = initial_state
 
-    adiabatic_energies = []
-    adiabatic_wavefunctions = []
-    adiabatic_probabilities = []
-    adiabatic_overlaps = []
+    energies = []
+    time_evolved_wavefunctions = []
+    state_probabilities = []
+    state_overlaps = []
     true_energies = []
 
     psi = psi_0.copy()
@@ -378,47 +373,49 @@ def simulate_adiabatic_evolution(N, M, V, mu_V_ratio_routine, J_V_ratio_routine,
         psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
         psi = psi / np.linalg.norm(psi)  
         
-        adiabatic_wavefunctions.append(psi)
+        time_evolved_wavefunctions.append(psi)
         
-        adiabatic_energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
-        adiabatic_energies.append(adiabatic_energy)
+        energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
+        energies.append(energy)
         
         overlap = [np.dot(np.conj(eigenvectors[i]).T, psi) for i in range(n_excited_states)] 
         probability = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
                
-        adiabatic_probabilities.append(probability)
-        adiabatic_overlaps.append(overlap)
+        state_probabilities.append(probability)
+        state_overlaps.append(overlap)
 
-    adiabatic_energies = np.array(adiabatic_energies)
-    adiabatic_wavefunctions = np.array(adiabatic_wavefunctions)
-    adiabatic_probabilities = np.array(adiabatic_probabilities)
-    adiabatic_overlaps = np.array(adiabatic_overlaps)
+    energies = np.array(energies)
+    time_evolved_wavefunctions = np.array(time_evolved_wavefunctions)
+    state_probabilities = np.array(state_probabilities)
+    state_overlaps = np.array(state_overlaps)
     true_energies = np.array(true_energies)
         
-    return adiabatic_energies, adiabatic_wavefunctions, adiabatic_probabilities, adiabatic_overlaps, true_energies
+    return energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def plot_adiabatic_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio_routine, time_array = None, plot_probability = True, plot_gap = True, plot_overlaps = True, plot_sigma = True):
+def plot_time_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio_routine, time_array = None, plot_probability = True, plot_gap = True, plot_overlaps = True, plot_sigma = True):
     # to do: add documentation
-    # tl;dr takes results from simulate_adiabatic_evolution() and and makes plots
+    # tl;dr takes results from simulate_time_evolution() and and makes plots
     
-    adiabatic_energies, adiabatic_wavefunctions, adiabatic_probabilities, adiabatic_overlaps, true_energies = results
+    energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies = results
+    energies = energies * 1/N
+    true_energies = true_energies * 1/N
     colors = get_cmap("gist_rainbow", M**N)
     
     if plot_probability == True:
         fig, ax = plt.subplots()
         for index in range(M**N):
             if index == 0:
-                ax.plot(times, adiabatic_probabilities[:,index], color = "k", label = "Ground State")
+                ax.plot(times, state_probabilities[:,index], color = "k", label = "Ground State")
             elif index == 1:
-                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index), label = "1st Excited State")
+                ax.plot(times, state_probabilities[:,index], color = colors(index), label = "1st Excited State")
             elif index == 2:
-                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index), label = "2nd Excited State") 
+                ax.plot(times, state_probabilities[:,index], color = colors(index), label = "2nd Excited State") 
             else: 
-                ax.plot(times, adiabatic_probabilities[:,index], color = colors(index))
+                ax.plot(times, state_probabilities[:,index], color = colors(index))
         ax.set_ylim(-0.1,1.1)
         ax.legend(loc = "center left")
-        ax.set_title(f"Adiabatic Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_title(f"State Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.set_ylabel("State Probability")
         ax.grid()
@@ -433,11 +430,11 @@ def plot_adiabatic_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio
         fig, ax = plt.subplots()
         for index in range(M**N):
             ax.plot(times, true_energies[:,index]-true_energies[:,0], color = colors(index))   
-        ax.plot(times, adiabatic_energies-true_energies[:,0], color = "k", label = "Adiabatic Gap")
+        ax.plot(times, energies-true_energies[:,0], color = "k", label = "Time Evolved State")
         ax.legend(loc = "upper center")
-        ax.set_title(f"Adiabatic Gap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_title(f"Scaled Energy Gap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
         ax.set_xlabel("Time [$t/|V|$]")
-        ax.set_ylabel("Energy [$E/|V|$]")
+        ax.set_ylabel("Scaled Energy [$E/N|V| = \epsilon/|V|$]")
         fig.tight_layout()
         if time_array is not None:
             accumulated_time = 0
@@ -449,15 +446,15 @@ def plot_adiabatic_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio
         fig, (ax1,ax2) = plt.subplots(nrows = 2, sharex=True)
         for index in range(M**N):
             if index == 0:
-                ax1.plot(times, np.real(adiabatic_overlaps[:,0]), '.', color = "k")
-                ax2.plot(times, np.imag(adiabatic_overlaps[:,0]), '.', color = "k")
+                ax1.plot(times, np.real(state_overlaps[:,0]), '.', color = "k")
+                ax2.plot(times, np.imag(state_overlaps[:,0]), '.', color = "k")
             else:    
-                ax1.plot(times, np.real(adiabatic_overlaps[:,index]), '.', color = colors(index))
-                ax2.plot(times, np.imag(adiabatic_overlaps[:,index]), '.', color = colors(index))
+                ax1.plot(times, np.real(state_overlaps[:,index]), '.', color = colors(index))
+                ax2.plot(times, np.imag(state_overlaps[:,index]), '.', color = colors(index))
             ax1.set_ylabel("$\Re$ Component")
             ax2.set_ylabel("$\Im$ Component")
         ax2.set_xlabel("Time [$t/|V|$]")
-        fig.suptitle(f"Adiabatic Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        fig.suptitle(f"State Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
         fig.tight_layout()
         if time_array is not None:
             accumulated_time = 0
@@ -469,10 +466,10 @@ def plot_adiabatic_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio
         fig, ax = plt.subplots()
         states, _ = enumerate_states(N, M)
         sigmas = []
-        for wavefunction in adiabatic_wavefunctions:
+        for wavefunction in time_evolved_wavefunctions:
             sigmas += [sigma_ij(0, 1, ground_state_wavefunction = wavefunction, states = states, N=N, M=M)/M]
         ax.plot(times, sigmas, "-k")
-        ax.set_title(f"Adiabatic $\sigma$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
+        ax.set_title(f"Time Evolved $\sigma$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
         ax.set_ylabel("$\sigma^{01}/M$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.grid()
