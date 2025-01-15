@@ -254,7 +254,7 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
     """
     Constructs a rescaled Hamiltonian matrix for a quantum system with N sites and M states per site, 
     incorporating chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
-    by the absolute value of V to produce H_tilde.
+    by the absolute value of V to produce H_tilde. Uses open boundary conditions.
 
     Parameters:
     N (int): Number of sites in the system.
