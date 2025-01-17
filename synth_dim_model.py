@@ -159,10 +159,10 @@ def create_H_key(formatted_states):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def sigma_ij(i, j, ground_state_wavefunction, states, N, M):
+def sigma_ij(i, j, wavefunction, states, N, M):
     """
     Computes the sigma value, representing the difference in synthetic dimension space between sites i and j, weighted 
-    by the ground state wavefunction.
+    by the wavefunction.
 
     Parameters:
     i (int): Index of the first site.
@@ -184,49 +184,13 @@ def sigma_ij(i, j, ground_state_wavefunction, states, N, M):
             for k in range(dim):
                 if states[k][i] == m:  
                     if states[k][j] == n: 
-                        sigma += abs(m - n) * np.linalg.norm(ground_state_wavefunction[k])**2
+                        sigma += abs(m - n) * np.linalg.norm(wavefunction[k])**2
                     else:
                         sigma += 0
                 else:
                     sigma += 0
     
     return sigma
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def construct_initial_hamiltonian(N, M, mu):
-    """
-    Constructs the initial Hamiltonian with the term H = -mu * sum_{i=0}^{N-1} c_{0,j}^\dagger c_{0,j}, which 
-    represents the action of a chemical potential on the states at site 0.
-    
-    Parameters:
-    N (int): Number of real lattice sites (synthetic levels).
-    M (int): Number of states per site (synthetic levels per site).
-    mu (float): Chemical potential acting on the system.
-
-    Returns:
-    np.ndarray: Initial Hamiltonian matrix of size (M^N x M^N), where each diagonal element corresponds to the 
-    chemical potential term applied to the site occupation numbers.
-    """
-    
-    dim = M**N
-    H = np.zeros((dim, dim), dtype=np.complex128)
-
-    # precompute powers of M for faster state-to-index conversion
-    M_powers = np.array([M**i for i in range(N)])
-
-    # helper function to convert state index to state representation
-    def index_to_state(index):
-        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
-
-    # apply the term -mu * c_{0,j}^\dagger * c_{0,j}
-    for alpha in range(dim):
-        state = index_to_state(alpha)
-        for j in range(N):
-            if state[j] == 0:  
-                H[alpha, alpha] -= mu  
-
-    return H
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -250,7 +214,7 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
+def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, use_periodic_bc = False):
     """
     Constructs a rescaled Hamiltonian matrix for a quantum system with N sites and M states per site, 
     incorporating chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
