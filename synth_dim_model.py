@@ -281,6 +281,10 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, use_periodic_
     # Rescale H to H_tilde by dividing by |V|
     H_tilde = H / abs(V)
     
+    if use_periodic_bc:
+        # to do later
+        pass
+    
     return H_tilde
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
