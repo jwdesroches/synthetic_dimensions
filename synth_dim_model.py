@@ -214,7 +214,7 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, use_periodic_bc = False):
+def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
     """
     Constructs a rescaled Hamiltonian matrix for a quantum system with N sites and M states per site, 
     incorporating chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
@@ -280,11 +280,7 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, use_periodic_
                     
     # Rescale H to H_tilde by dividing by |V|
     H_tilde = H / abs(V)
-    
-    if use_periodic_bc:
-        # to do later
-        pass
-    
+        
     return H_tilde
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
@@ -435,7 +431,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio_rout
         states, _ = enumerate_states(N, M)
         sigmas = []
         for wavefunction in time_evolved_wavefunctions:
-            sigmas += [sigma_ij(0, 1, ground_state_wavefunction = wavefunction, states = states, N=N, M=M)/M]
+            sigmas += [sigma_ij(0, 1, wavefunction = wavefunction, states = states, N=N, M=M)/M]
         ax.plot(times, sigmas, "-k")
         ax.set_title(f"Time Evolved $\sigma$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratio_routine[-1]}$")
         ax.set_ylabel("$\sigma^{01}/M$")
@@ -450,31 +446,54 @@ def plot_time_evolution(N, M, results, times, J_V_ratio_routine, mu_V_ratio_rout
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def make_linear_stepped_routines(J_V_ratios, mu_V_ratios, time_array, dt):
-    # to do: documentation
-    # tl;dr makes linear stepped routine (start here, end here for each step linearly)
+def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None):
     
-    if len(J_V_ratios) != len(mu_V_ratios) or len(J_V_ratios) != len(time_array):
-        raise ValueError("The length of J_V_ratios, mu_V_ratios, and time_array must be equal.")
+    n_excited_states = len(hamiltonians[0])
+    initial_hamiltonian = hamiltonians[0]
     
-    num_steps = len(time_array)
-    
-    times = []
-    start_time = 0
-    for t in time_array:
-    
-        time_array = np.linspace(start_time, start_time + t, num = int(t / dt))
-        times.append(time_array)
-        start_time += t
+    if initial_state is None:
+        _, eigenvectors_0 = exact_diagonalize(initial_hamiltonian)
+        psi_0 = eigenvectors_0[0]
+    else:
+        psi_0 = initial_state
+
+    energies = []
+    time_evolved_wavefunctions = []
+    state_probabilities = []
+    state_overlaps = []
+    true_energies = []
+
+    psi = psi_0.copy()
+    for idx, instantaneous_hamiltonian in enumerate(hamiltonians):
         
-    concatenated_times = np.concatenate(times)
+        if idx > 1:
+            dt = times[idx] - times[idx - 1]
+        else:
+            dt = times[idx]
+            
+        eigenvalues, eigenvectors = exact_diagonalize(instantaneous_hamiltonian)
+        true_energies.append(eigenvalues)    
+        
+        psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
+        psi = psi / np.linalg.norm(psi)  
+        
+        time_evolved_wavefunctions.append(psi)
+        
+        energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
+        energies.append(energy)
+        
+        overlap = [np.dot(np.conj(eigenvectors[i]).T, psi) for i in range(n_excited_states)] 
+        probability = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
+               
+        state_probabilities.append(probability)
+        state_overlaps.append(overlap)
 
-    J_V_ratio_steps = [np.linspace(J_V_ratios[i][0], J_V_ratios[i][1], int(time_array[i] / dt)) for i in range(num_steps)]
-    mu_V_ratio_steps = [np.linspace(mu_V_ratios[i][0], mu_V_ratios[i][1], int(time_array[i] / dt)) for i in range(num_steps)]
-
-    J_V_ratio_routine = np.concatenate(J_V_ratio_steps)
-    mu_V_ratio_routine = np.concatenate(mu_V_ratio_steps)
-
-    return concatenated_times, J_V_ratio_routine, mu_V_ratio_routine
+    energies = np.array(energies)
+    time_evolved_wavefunctions = np.array(time_evolved_wavefunctions)
+    state_probabilities = np.array(state_probabilities)
+    state_overlaps = np.array(state_overlaps)
+    true_energies = np.array(true_energies)
+        
+    return energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
