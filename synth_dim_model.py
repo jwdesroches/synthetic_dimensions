@@ -359,7 +359,8 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
             else: 
                 ax.plot(times, state_probabilities[:,index], color = colors(index))
         ax.set_ylim(-0.1,1.1)
-        ax.legend(loc = "center left")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3)
+        fig.subplots_adjust(bottom=0.4)
         ax.set_title(f"State Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.set_ylabel("State Probability")
