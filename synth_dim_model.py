@@ -682,8 +682,8 @@ def plot_data(N, M, sign_V="positive", gap_or_sigma="energy_gap", include_path=F
         ax.set_xlabel("J/|V|")
         ax.set_ylabel("μ/|V|")
     
-    ax.set_ylim(0, 2)
-    ax.set_xlim(-2, 2)
+    ax.set_ylim(0, 10)
+    ax.set_xlim(-10, 10)
     
     sign_str = r"$V > 0$" if sign_V == "positive" else r"$V < 0$"
     plt.title(f"{plot_title}: $N={N}$, $M={M}$, {sign_str}")
