@@ -287,6 +287,34 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
+def construct_ground_state_manifold(eigenvalues, eigenvectors, epsilon = 1e-9):
+    ground_state_energy = eigenvalues[0]
+    ground_state_manifold = []
+    for i in range(len(eigenvalues)):
+        if ground_state_energy - epsilon <= eigenvalues[i] <= ground_state_energy + epsilon:
+            ground_state_manifold += [eigenvectors[i]]
+    return ground_state_manifold
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def calculate_ground_state_manifold_overlap(state, ground_state_manifold):
+    projector = np.zeros((len(ground_state_manifold[0]), len(ground_state_manifold[0])), dtype=complex)
+    for psi in ground_state_manifold:
+        psi = psi.reshape(-1, 1)    
+        projector += psi @ psi.T.conj()
+
+    state = state.reshape(-1,1)
+    ground_state_manifold_overlap = (state.T.conj() @ projector @ state)[0][0]
+    
+    if np.imag(ground_state_manifold_overlap) > 1e-9:
+        print("Imaginary component for ground state manifold overlap is non-zero! Check code!")
+    else:
+        ground_state_manifold_overlap = np.real(ground_state_manifold_overlap)
+
+    return ground_state_manifold_overlap
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
 def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None):
     """
     Simulates the time evolution of a quantum state under a series of time-dependent Hamiltonians.
@@ -327,6 +355,7 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
     state_probabilities = []
     state_overlaps = []
     true_energies = []
+    ground_state_manifold_overlaps = []
 
     psi = psi_0.copy()
     for idx, instantaneous_hamiltonian in enumerate(hamiltonians):
@@ -337,19 +366,22 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
             dt = times[idx]
             
         eigenvalues, eigenvectors = exact_diagonalize(instantaneous_hamiltonian)
-        true_energies.append(eigenvalues)    
-        
+        ground_state_manifold = construct_ground_state_manifold(eigenvalues, eigenvectors)
+        true_energies.append(eigenvalues) 
+                
         psi = evolve_wavefunction(psi, instantaneous_hamiltonian, dt)
         psi = psi / np.linalg.norm(psi)  
         
         time_evolved_wavefunctions.append(psi)
-        
+
         energy = np.real(np.conj(psi).T @ instantaneous_hamiltonian @ psi)
         energies.append(energy)
         
+        ground_state_manifold_overlap = calculate_ground_state_manifold_overlap(psi, ground_state_manifold)
         overlap = [np.dot(np.conj(eigenvectors[i]).T, psi) for i in range(n_excited_states)] 
-        probability = [np.abs(np.conj(eigenvectors[i]).T @ psi)**2 for i in range(n_excited_states)]
-               
+        probability = [np.abs(overlap[i])**2 for i in range(n_excited_states)]
+        
+        ground_state_manifold_overlaps.append(ground_state_manifold_overlap)
         state_probabilities.append(probability)
         state_overlaps.append(overlap)
 
@@ -358,12 +390,13 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
     state_probabilities = np.array(state_probabilities)
     state_overlaps = np.array(state_overlaps)
     true_energies = np.array(true_energies)
+    ground_state_manifold_overlaps = np.array(ground_state_manifold_overlaps)
         
-    return energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies
+    return energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies, ground_state_manifold_overlaps
 
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
-def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_probability=True, plot_gap=True, plot_overlaps=True, plot_sigma=True):
+def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_probability=True, plot_gap=True, plot_overlaps=True, plot_sigma=True, plot_ground_state_manifold_overlaps = True):
     """
     Plots the time evolution of various observables of a quantum system.
     
@@ -392,7 +425,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
     None
     """
     
-    energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies = results
+    energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies, ground_state_manifold_overlaps = results
     energies = energies * 1/N
     true_energies = true_energies * 1/N
     colors = get_cmap("gist_rainbow", M**N)
@@ -452,7 +485,15 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
         ax.set_ylabel("$\sigma^{01}/M$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.grid()
-
+        
+    if plot_ground_state_manifold_overlaps:
+        fig, ax = plt.subplots()
+        ax.plot(times, ground_state_manifold_overlaps, '-k')
+        ax.set_title(f"Ground State Manifold Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.set_ylabel(r"Ground State Manifold Overlap [$\langle \psi | P_D | \psi \rangle$]")
+        ax.set_ylim(-0.1, 1.1)
+        ax.grid()
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
 def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 1):
@@ -568,8 +609,8 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
         adiabatic_penalty *= lambda_adiabatic
         
         # Simulate the time evolution and compute the ground state infidelity.
-        energies_sim, _, state_probabilities, _, _ = simulate_hamiltonian_time_evolution(hamiltonians, times_dense)
-        ground_state_fidelity = state_probabilities[-1, 0]
+        _, _, _, _, _, calculate_ground_state_manifold_overlaps = simulate_hamiltonian_time_evolution(hamiltonians, times_dense)
+        ground_state_fidelity = calculate_ground_state_manifold_overlaps[-1]
         ground_state_infidelity = 1 - ground_state_fidelity
         
         return ground_state_infidelity + penalty + smoothness_penalty + adiabatic_penalty
