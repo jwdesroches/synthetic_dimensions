@@ -196,7 +196,7 @@ def sigma_ij(i, j, wavefunction, states, N, M):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
+def old_construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
     """
     Constructs a rescaled J-V-mu Hamiltonian matrix with N sites and M states per site, incorporating 
     chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
@@ -259,6 +259,109 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
                     beta = state_to_index(new_state)
                     H[alpha, beta] += V
                     H[beta, alpha] += V  # Ensure Hermitian symmetry
+                    
+    # Rescale H to H_tilde by dividing by |V|
+    H_tilde = H / abs(V)
+        
+    return H_tilde
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
+
+def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, boundary_conditions = "OBC"):
+    """
+    Constructs a rescaled J-V-mu Hamiltonian matrix with N sites and M states per site, incorporating 
+    chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
+    by the absolute value of V to produce H_tilde. Can specify either OBC or PBC. 
+
+    Parameters:
+    N (int): Number of sites in the system.
+    M (int): Number of states per site.
+    V (float): Interaction strength.
+    mu_V_ratio (float): Ratio of the chemical potential (mu) to the interaction strength (V).
+    J_V_ratio (float): Ratio of the tunneling parameter (J) to the interaction strength (V).
+    theta (float): The phase to apply to the tunneling term between n = 0 and n = 1. Defaults to 0.
+    boundary_conditions (string, optional): Which boundary conditions to use. Either "OBC" for 
+                                            open boundary conditions or PBC for periodic boundary 
+                                            conditions. Defaults to OBC.
+
+    Returns:
+    np.ndarray: The rescaled Hamiltonian matrix H_tilde (normalized by |V|).
+    """
+    mu = mu_V_ratio * abs(V)
+    J = J_V_ratio * abs(V)
+    dim = M**N
+    H = np.zeros((dim, dim), dtype=np.complex128)
+
+    # Precompute powers of M for faster state-to-index conversion
+    M_powers = np.array([M**i for i in range(N)])
+
+    # Helper function to convert a state index to a state representation (array of states)
+    def index_to_state(index):
+        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
+    
+    # Helper function to convert a state representation (array of states) back to an index
+    def state_to_index(state):
+        return np.dot(state, M_powers[::-1])
+
+    # Apply the chemical potential term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            if state[j] == 0:
+                H[alpha, alpha] -= mu
+
+    # Apply the tunneling term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            for n in range(M):
+                if state[j] == n:
+                    if n == 0:
+                        if boundary_conditions == "PBC":
+                            new_state = state.copy()
+                            new_state[j] = M - 1
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] -= J
+                            H[beta, alpha] -= J
+                        elif boundary_conditions == "OBC":
+                            pass
+                        
+                    else:
+                        new_state = state.copy()
+                        new_state[j] = n - 1
+                        beta = state_to_index(new_state)
+                        
+                        if n == 1:
+                            H[alpha, beta] -= J*np.exp(1j*theta)
+                            H[beta, alpha] -= J*np.exp(-1j*theta)
+                            
+                        else:
+                            H[alpha, beta] -= J
+                            H[beta, alpha] -= J  
+
+    # Apply the interaction term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for i in range(N - 1):
+            j = i + 1
+            for n in range(M):
+                if n == 0:
+                    if boundary_conditions == "PBC":
+                        if state[i] == 0 and state[j] == M - 1:
+                            new_state = state.copy()
+                            new_state[i], new_state[j] = M - 1, 0
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] += V
+                            H[beta, alpha] += V  
+                    elif boundary_conditions == "OBC":
+                        pass
+                else:
+                    if state[i] == n and state[j] == n - 1:
+                        new_state = state.copy()
+                        new_state[i], new_state[j] = n - 1, n
+                        beta = state_to_index(new_state)
+                        H[alpha, beta] += V
+                        H[beta, alpha] += V  
                     
     # Rescale H to H_tilde by dividing by |V|
     H_tilde = H / abs(V)
@@ -396,7 +499,7 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
 
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
-def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_probability=True, plot_gap=True, plot_overlaps=True, plot_sigma=True, plot_ground_state_manifold_overlaps = True):
+def plot_time_evolution(N, M, sign_V, results, times, J_V_ratios, mu_V_ratios, plot_probability=True, plot_gap=True, plot_overlaps=True, plot_sigma=True, plot_ground_state_manifold_overlaps = True):
     """
     Plots the time evolution of various observables of a quantum system.
     
@@ -430,6 +533,11 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
     true_energies = true_energies * 1/N
     colors = get_cmap("gist_rainbow", M**N)
     
+    if sign_V == "positive":
+        sign_V_string = r"$V>0$"
+    else:
+        sign_V_string = r"$V<0$"
+    
     if plot_probability:
         fig, ax = plt.subplots()
         for index in range(M**N):
@@ -442,7 +550,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
             else: 
                 ax.plot(times, state_probabilities[:, index], color=colors(index))
         ax.set_ylim(-0.1, 1.1)
-        ax.set_title(f"State Probabilities: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_title(f"State Probabilities: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
         ax.set_xlabel("Time")
         ax.set_ylabel("State Probability")
         ax.grid()
@@ -454,7 +562,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
             ax.plot(times, true_energies[:, index] - true_energies[:, 0], color=colors(index))   
         ax.plot(times, energies - true_energies[:, 0], color="k", label="Time Evolved State")
         ax.legend(loc="upper center")
-        ax.set_title(f"Scaled Energy Gap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_title(f"Scaled Energy Gap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.set_ylabel("Scaled Energy [$E/N|V| = \epsilon/|V|$]")
         fig.tight_layout()
@@ -471,7 +579,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
             ax1.set_ylabel("$\Re$ Component")
             ax2.set_ylabel("$\Im$ Component")
         ax2.set_xlabel("Time [$t/|V|$]")
-        fig.suptitle(f"State Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        fig.suptitle(f"State Overlap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
         fig.tight_layout()
      
     if plot_sigma:
@@ -481,7 +589,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
         for wavefunction in time_evolved_wavefunctions:
             sigmas += [sigma_ij(0, 1, wavefunction=wavefunction, states=states, N=N, M=M) / M]
         ax.plot(times, sigmas, "-k")
-        ax.set_title(f"Time Evolved $\sigma$: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_title(f"Time Evolved $\sigma$: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
         ax.set_ylabel("$\sigma^{01}/M$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.grid()
@@ -489,7 +597,7 @@ def plot_time_evolution(N, M, results, times, J_V_ratios, mu_V_ratios, plot_prob
     if plot_ground_state_manifold_overlaps:
         fig, ax = plt.subplots()
         ax.plot(times, ground_state_manifold_overlaps, '-k')
-        ax.set_title(f"Ground State Manifold Overlap: $N={N}$, $M={M}$, $V<0$, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_title(f"Ground State Manifold Overlap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
         ax.set_xlabel("Time [$t/|V|$]")
         ax.set_ylabel(r"Ground State Manifold Overlap [$\langle \psi | P_D | \psi \rangle$]")
         ax.set_ylim(-0.1, 1.1)
