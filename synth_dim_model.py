@@ -267,7 +267,7 @@ def old_construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
 
 # ------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, boundary_conditions = "OBC"):
+def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, boundary_conditions = "OBC", chemical_potential_loc = 0):
     """
     Constructs a rescaled J-V-mu Hamiltonian matrix with N sites and M states per site, incorporating 
     chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
@@ -307,9 +307,9 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, bo
     for alpha in range(dim):
         state = index_to_state(alpha)
         for j in range(N):
-            if state[j] == 0:
+            if state[j] == chemical_potential_loc:
                 H[alpha, alpha] -= mu
-
+                    
     # Apply the tunneling term
     for alpha in range(dim):
         state = index_to_state(alpha)
@@ -604,7 +604,7 @@ def plot_time_evolution(N, M, sign_V, results, times, J_V_ratios, mu_V_ratios, p
         ax.grid()
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 1):
+def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None):
     """
     Constructs optimized piecewise linear paths for the control parameters J/|V| and μ/|V|.
     
@@ -717,7 +717,7 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
         adiabatic_penalty *= lambda_adiabatic
         
         # Simulate the time evolution and compute the ground state infidelity.
-        _, _, _, _, _, calculate_ground_state_manifold_overlaps = simulate_hamiltonian_time_evolution(hamiltonians, times_dense)
+        _, _, _, _, _, calculate_ground_state_manifold_overlaps = simulate_hamiltonian_time_evolution(hamiltonians, times_dense, initial_state = initial_state)
         ground_state_fidelity = calculate_ground_state_manifold_overlaps[-1]
         ground_state_infidelity = 1 - ground_state_fidelity
         
