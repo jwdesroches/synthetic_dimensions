@@ -649,7 +649,7 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
     mu_initial_guess = np.linspace(mu_V_init, mu_V_final, n_points)[1:-1]
     
     # Non-linear initial guess for intermediate times: more time allocated toward the end.
-    t_initial_guess = T * (np.linspace(0, 1, n_points)[1:-1] ** alpha)
+    t_initial_guess = T * (np.linspace(0, 1, n_points)[1:-1] ** =alpha)
 
     # Combine intermediate control values and times into one vector.
     x0 = np.concatenate((J_initial_guess, mu_initial_guess, t_initial_guess))
