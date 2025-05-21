@@ -604,7 +604,7 @@ def plot_time_evolution(N, M, sign_V, results, times, J_V_ratios, mu_V_ratios, p
         ax.grid()
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None):
+def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None, chemical_potential_loc = 0):
     """
     Constructs optimized piecewise linear paths for the control parameters J/|V| and μ/|V|.
     
@@ -698,9 +698,7 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
         # Construct Hamiltonians at each point in the dense time grid.
         hamiltonians = []
         for i, t in enumerate(times_dense):
-            ham = construct_rescaled_hamiltonian(N, M, V,
-                                                 mu_V_ratio=mu_path_dense[i],
-                                                 J_V_ratio=J_path_dense[i])
+            ham = construct_rescaled_hamiltonian(N, M, V, mu_V_ratio=mu_path_dense[i], J_V_ratio=J_path_dense[i], chemical_potential_loc = chemical_potential_loc)
             hamiltonians.append(ham)
         
         # Adiabaticity penalty: discourages rapid changes in the Hamiltonian.
