@@ -196,101 +196,76 @@ def sigma_ij(i, j, wavefunction, states, N, M):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def sigma_ij_operator(i, j, states, N, M):
-    """placeholder definition"""
-    dim = M**N 
-    Sigma_ij = np.zeros((dim, dim))
+def old2_construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio):
+    """
+    Constructs a rescaled J-V-mu Hamiltonian matrix with N sites and M states per site, incorporating 
+    chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
+    by the absolute value of V to produce H_tilde. Uses open boundary conditions.
 
-    for k in range(dim):
-        for m in range(M):
-            for n in range(M):
-                if states[k][i] == m and states[k][j] == n:
-                    Sigma_ij[k, k] += abs(m - n)  
+    Parameters:
+    N (int): Number of sites in the system.
+    M (int): Number of states per site.
+    V (float): Interaction strength.
+    mu_V_ratio (float): Ratio of the chemical potential (mu) to the interaction strength (V).
+    J_V_ratio (float): Ratio of the tunneling parameter (J) to the interaction strength (V).
 
-    return Sigma_ij
+    Returns:
+    np.ndarray: The rescaled Hamiltonian matrix H_tilde (normalized by |V|).
+    """
+    mu = mu_V_ratio * abs(V)
+    J = J_V_ratio * abs(V)
+    dim = M**N
+    H = np.zeros((dim, dim), dtype=np.complex128)
 
-# --------------------------------------------------------------------------------------------------------------------------------------------
+    # Precompute powers of M for faster state-to-index conversion
+    M_powers = np.array([M**i for i in range(N)])
 
-def calculate_specific_heat(beta, energy_eigenvalues):
-    """placeholder definition"""
-    E0 = np.min(energy_eigenvalues)
-    E_shifted = energy_eigenvalues - E0
-
-    exp_factors = np.exp(-beta * E_shifted)
-    Z_tilde = np.sum(exp_factors)
-
-    avg_E_shifted = np.sum(E_shifted * exp_factors) / Z_tilde
-    avg_E2_shifted = np.sum(E_shifted**2 * exp_factors) / Z_tilde
-
-    avg_E = E0 + avg_E_shifted
-    avg_E2 = E0**2 + 2 * E0 * avg_E_shifted + avg_E2_shifted
-
-    Cv = (avg_E2 - avg_E**2) * beta**2
-    return Cv
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def calculate_average_energy(beta, energy_eigenvalues):
-    """placeholder definition"""
-    E0 = np.min(energy_eigenvalues)
-    E_shifted = energy_eigenvalues - E0
-
-    exp_factors = np.exp(-beta * E_shifted)
-    Z_tilde = np.sum(exp_factors)
-
-    avg_E_shifted = np.sum(E_shifted * exp_factors) / Z_tilde
-    avg_E = E0 + avg_E_shifted
+    # Helper function to convert a state index to a state representation (array of states)
+    def index_to_state(index):
+        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
     
-    return avg_E
+    # Helper function to convert a state representation (array of states) back to an index
+    def state_to_index(state):
+        return np.dot(state, M_powers[::-1])
 
-# --------------------------------------------------------------------------------------------------------------------------------------------
+    # Apply the chemical potential term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            if state[j] == 0:
+                H[alpha, alpha] -= mu
 
-def calculate_finite_temperature_expectation_value(operator, beta, energy_eigenvalues, energy_eigenstates):
-    """placeholder definition"""    
-    energy_shift = np.min(energy_eigenvalues)
-    shifted_energies = energy_eigenvalues - energy_shift
+    # Apply the tunneling term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            for n in range(1, M):
+                if state[j] == n:
+                    new_state = state.copy()
+                    new_state[j] = n - 1
+                    beta = state_to_index(new_state)
+                    H[alpha, beta] -= J
+                    H[beta, alpha] -= J  # Ensure Hermitian symmetry
 
-    weights = np.exp(-beta * shifted_energies)
-    normalization_factor = np.sum(weights)
-    
-    expectation_value = 0
-    for i, psi in enumerate(energy_eigenstates):
-        Ai = psi.T.conj() @ operator @ psi
-        expectation_value += weights[i] * Ai
+    # Apply the interaction term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for i in range(N - 1):
+            j = i + 1
+            for n in range(1, M):
+                if state[i] == n and state[j] == n - 1:
+                    new_state = state.copy()
+                    new_state[i], new_state[j] = n - 1, n
+                    beta = state_to_index(new_state)
+                    H[alpha, beta] += V
+                    H[beta, alpha] += V  # Ensure Hermitian symmetry
+                    
+    # Rescale H to H_tilde by dividing by |V|
+    H_tilde = H / abs(V)
+        
+    return H_tilde
 
-    return expectation_value / normalization_factor
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def construct_ground_state_manifold(eigenvalues, eigenvectors, epsilon = 1e-9):
-    """Placeholder definition."""
-    ground_state_energy = eigenvalues[0]
-    ground_state_manifold = []
-    for i in range(len(eigenvalues)):
-        if ground_state_energy - epsilon <= eigenvalues[i] <= ground_state_energy + epsilon:
-            ground_state_manifold += [eigenvectors[i]]
-    return ground_state_manifold
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
-
-def calculate_ground_state_manifold_overlap(state, ground_state_manifold):
-    """Placeholder definition."""
-    projector = np.zeros((len(ground_state_manifold[0]), len(ground_state_manifold[0])), dtype=complex)
-    for psi in ground_state_manifold:
-        psi = psi.reshape(-1, 1)    
-        projector += psi @ psi.T.conj()
-
-    state = state.reshape(-1,1)
-    ground_state_manifold_overlap = (state.T.conj() @ projector @ state)[0][0]
-    
-    if np.imag(ground_state_manifold_overlap) > 1e-9:
-        print("Imaginary component for ground state manifold overlap is non-zero! Check code!")
-    else:
-        ground_state_manifold_overlap = np.real(ground_state_manifold_overlap)
-
-    return ground_state_manifold_overlap
-
-# --------------------------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------------------------------
 
 def construct_hamiltonian(N, M, V, mu, J, theta = 0, boundary_conditions = "OBC", chemical_potential_loc = 0):
     """Placeholder definition."""
@@ -381,6 +356,108 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, bo
     return H_tilde
 
 # ------------------------------------------------------------------------------------------------------------------------------------------
+def old_construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, boundary_conditions = "OBC", chemical_potential_loc = 0):
+    """
+    Constructs a rescaled J-V-mu Hamiltonian matrix with N sites and M states per site, incorporating 
+    chemical potential, tunneling, and interaction terms. The Hamiltonian is normalized 
+    by the absolute value of V to produce H_tilde. Can specify either OBC or PBC. 
+
+    Parameters:
+    N (int): Number of sites in the system.
+    M (int): Number of states per site.
+    V (float): Interaction strength.
+    mu_V_ratio (float): Ratio of the chemical potential (mu) to the interaction strength (V).
+    J_V_ratio (float): Ratio of the tunneling parameter (J) to the interaction strength (V).
+    theta (float): The phase to apply to the tunneling term between n = 0 and n = 1. Defaults to 0.
+    boundary_conditions (string, optional): Which boundary conditions to use. Either "OBC" for 
+                                            open boundary conditions or PBC for periodic boundary 
+                                            conditions. Defaults to OBC.
+
+    Returns:
+    np.ndarray: The rescaled Hamiltonian matrix H_tilde (normalized by |V|).
+    """
+    mu = mu_V_ratio * abs(V)
+    J = J_V_ratio * abs(V)
+    dim = M**N
+    H = np.zeros((dim, dim), dtype=np.complex128)
+
+    # Precompute powers of M for faster state-to-index conversion
+    M_powers = np.array([M**i for i in range(N)])
+
+    # Helper function to convert a state index to a state representation (array of states)
+    def index_to_state(index):
+        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
+    
+    # Helper function to convert a state representation (array of states) back to an index
+    def state_to_index(state):
+        return np.dot(state, M_powers[::-1])
+
+    # Apply the chemical potential term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            if state[j] == chemical_potential_loc:
+                H[alpha, alpha] -= mu
+                    
+    # Apply the tunneling term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            for n in range(M):
+                if state[j] == n:
+                    if n == 0:
+                        if boundary_conditions == "PBC":
+                            new_state = state.copy()
+                            new_state[j] = M - 1
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] -= J
+                            H[beta, alpha] -= J
+                        elif boundary_conditions == "OBC":
+                            pass
+                        
+                    else:
+                        new_state = state.copy()
+                        new_state[j] = n - 1
+                        beta = state_to_index(new_state)
+                        
+                        if n == 1:
+                            H[alpha, beta] -= J*np.exp(1j*theta)
+                            H[beta, alpha] -= J*np.exp(-1j*theta)
+                            
+                        else:
+                            H[alpha, beta] -= J
+                            H[beta, alpha] -= J  
+
+    # Apply the interaction term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for i in range(N - 1):
+            j = i + 1
+            for n in range(M):
+                if n == 0:
+                    if boundary_conditions == "PBC":
+                        if state[i] == 0 and state[j] == M - 1:
+                            new_state = state.copy()
+                            new_state[i], new_state[j] = M - 1, 0
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] += V
+                            H[beta, alpha] += V  
+                    elif boundary_conditions == "OBC":
+                        pass
+                else:
+                    if state[i] == n and state[j] == n - 1:
+                        new_state = state.copy()
+                        new_state[i], new_state[j] = n - 1, n
+                        beta = state_to_index(new_state)
+                        H[alpha, beta] += V
+                        H[beta, alpha] += V  
+                    
+    # Rescale H to H_tilde by dividing by |V|
+    H_tilde = H / abs(V)
+        
+    return H_tilde
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
 
 def evolve_wavefunction(psi, H, dt, hbar=1.0):
     """
@@ -399,6 +476,34 @@ def evolve_wavefunction(psi, H, dt, hbar=1.0):
     U = expm(-1j * H * dt)
     psi = np.dot(U, psi)
     return psi
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def construct_ground_state_manifold(eigenvalues, eigenvectors, epsilon = 1e-9):
+    ground_state_energy = eigenvalues[0]
+    ground_state_manifold = []
+    for i in range(len(eigenvalues)):
+        if ground_state_energy - epsilon <= eigenvalues[i] <= ground_state_energy + epsilon:
+            ground_state_manifold += [eigenvectors[i]]
+    return ground_state_manifold
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def calculate_ground_state_manifold_overlap(state, ground_state_manifold):
+    projector = np.zeros((len(ground_state_manifold[0]), len(ground_state_manifold[0])), dtype=complex)
+    for psi in ground_state_manifold:
+        psi = psi.reshape(-1, 1)    
+        projector += psi @ psi.T.conj()
+
+    state = state.reshape(-1,1)
+    ground_state_manifold_overlap = (state.T.conj() @ projector @ state)[0][0]
+    
+    if np.imag(ground_state_manifold_overlap) > 1e-9:
+        print("Imaginary component for ground state manifold overlap is non-zero! Check code!")
+    else:
+        ground_state_manifold_overlap = np.real(ground_state_manifold_overlap)
+
+    return ground_state_manifold_overlap
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -482,6 +587,110 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
     return energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies, ground_state_manifold_overlaps
 
 
+# --------------------------------------------------------------------------------------------------------------------------------------------
+def plot_time_evolution(N, M, sign_V, results, times, J_V_ratios, mu_V_ratios, plot_probability=True, plot_gap=True, plot_overlaps=True, plot_sigma=True, plot_ground_state_manifold_overlaps = True):
+    """
+    Plots the time evolution of various observables of a quantum system.
+    
+    Depending on the flags provided, this function generates plots for:
+      - State probabilities (population in each eigenstate)
+      - Scaled energy gaps between the instantaneous eigenstates and the ground state
+      - Real and imaginary parts of the overlaps between the time-evolved state and the instantaneous eigenstates
+      - A synthetic observable σ calculated from the time-evolved wavefunctions
+    
+    The plots are annotated using the control parameters J/|V| and μ/|V|.
+    
+    Parameters:
+    N (int): Number of particles or spins in the system.
+    M (int): Local Hilbert space dimension.
+    results (tuple): A tuple containing outputs from `simulate_hamiltonian_time_evolution`, specifically:
+                     (energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies).
+    times (array-like): Array of time values corresponding to the simulation.
+    J_V_ratios (array-like): Array of J/|V| ratios used in the evolution.
+    mu_V_ratios (array-like): Array of μ/|V| ratios used in the evolution.
+    plot_probability (bool, optional): If True, plots the state probabilities. Default is True.
+    plot_gap (bool, optional): If True, plots the scaled energy gap. Default is True.
+    plot_overlaps (bool, optional): If True, plots the real and imaginary parts of state overlaps. Default is True.
+    plot_sigma (bool, optional): If True, plots the synthetic observable σ. Default is True.
+    
+    Returns:
+    None
+    """
+    
+    energies, time_evolved_wavefunctions, state_probabilities, state_overlaps, true_energies, ground_state_manifold_overlaps = results
+    energies = energies * 1/N
+    true_energies = true_energies * 1/N
+    colors = get_cmap("gist_rainbow", M**N)
+    
+    if sign_V == "positive":
+        sign_V_string = r"$V>0$"
+    else:
+        sign_V_string = r"$V<0$"
+    
+    if plot_probability:
+        fig, ax = plt.subplots()
+        for index in range(M**N):
+            if index == 0:
+                ax.plot(times, state_probabilities[:, index], color="k", label="Ground State")
+            elif index == 1:
+                ax.plot(times, state_probabilities[:, index], color=colors(index), label="1st Excited State")
+            elif index == 2:
+                ax.plot(times, state_probabilities[:, index], color=colors(index), label="2nd Excited State") 
+            else: 
+                ax.plot(times, state_probabilities[:, index], color=colors(index))
+        ax.set_ylim(-0.1, 1.1)
+        ax.set_title(f"State Probabilities: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("State Probability")
+        ax.grid()
+        fig.tight_layout()
+        
+    if plot_gap:
+        fig, ax = plt.subplots()
+        for index in range(M**N):
+            ax.plot(times, true_energies[:, index] - true_energies[:, 0], color=colors(index))   
+        ax.plot(times, energies - true_energies[:, 0], color="k", label="Time Evolved State")
+        ax.legend(loc="upper center")
+        ax.set_title(f"Scaled Energy Gap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.set_ylabel("Scaled Energy [$E/N|V| = \epsilon/|V|$]")
+        fig.tight_layout()
+    
+    if plot_overlaps:
+        fig, (ax1, ax2) = plt.subplots(nrows=2, sharex=True)
+        for index in range(M**N):
+            if index == 0:
+                ax1.plot(times, np.real(state_overlaps[:, 0]), '.', color="k")
+                ax2.plot(times, np.imag(state_overlaps[:, 0]), '.', color="k")
+            else:    
+                ax1.plot(times, np.real(state_overlaps[:, index]), '.', color=colors(index))
+                ax2.plot(times, np.imag(state_overlaps[:, index]), '.', color=colors(index))
+            ax1.set_ylabel("$\Re$ Component")
+            ax2.set_ylabel("$\Im$ Component")
+        ax2.set_xlabel("Time [$t/|V|$]")
+        fig.suptitle(f"State Overlap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        fig.tight_layout()
+     
+    if plot_sigma:
+        fig, ax = plt.subplots()
+        states, _ = enumerate_states(N, M)
+        sigmas = []
+        for wavefunction in time_evolved_wavefunctions:
+            sigmas += [sigma_ij(0, 1, wavefunction=wavefunction, states=states, N=N, M=M) / M]
+        ax.plot(times, sigmas, "-k")
+        ax.set_title(f"Time Evolved $\sigma$: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_ylabel("$\sigma^{01}/M$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.grid()
+        
+    if plot_ground_state_manifold_overlaps:
+        fig, ax = plt.subplots()
+        ax.plot(times, ground_state_manifold_overlaps, '-k')
+        ax.set_title(f"Ground State Manifold Overlap: $N={N}$, $M={M}$, {sign_V_string}, $(J/|V|)_f = {J_V_ratios[-1]}$")
+        ax.set_xlabel("Time [$t/|V|$]")
+        ax.set_ylabel(r"Ground State Manifold Overlap [$\langle \psi | P_D | \psi \rangle$]")
+        ax.set_ylim(-0.1, 1.1)
+        ax.grid()
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
 def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None, chemical_potential_loc = 0):
@@ -621,5 +830,103 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
     
     obj_value = result.fun
     return (times_dense, J_V_path, mu_V_path, obj_value, opt_params, t_control_opt, J_control_opt, mu_control_opt)
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def plot_data(N, M, sign_V="positive", gap_or_sigma="energy_gap", include_path=False, mu_V_ratios=None, J_V_ratios=None, times=None):
+    """
+    Plots simulation data loaded from a CSV file for either the energy gap or a synthetic distance (σ).
+    
+    The function constructs the filename based on the provided parameters, loads the data (assumed to be in a grid),
+    reshapes it appropriately, and then generates a pseudocolor plot using `pcolormesh`. Depending on the value of 
+    `gap_or_sigma`, the data may be transformed (e.g., logarithmically for the energy gap). Optionally, a control path 
+    defined by the arrays `J_V_ratios`, `mu_V_ratios`, and `times` can be overlaid on the plot.
+    
+    Parameters:
+    -----------
+    N (int): Number of sites.
+    M (int): Number of synthetic levels per site.
+    sign_V (str, optional): Sign indicator for V. Use "positive" for V > 0 and "negative" for V < 0. Default is "positive".
+    gap_or_sigma (str, optional): Specifies the type of data to plot. Use "energy_gap" to plot the energy gap data or any other value for synthetic distance (σ). Default is "energy_gap".
+    include_path (bool, optional): If True, overlays a control path on the plot using `J_V_ratios`, `mu_V_ratios`, and `times`. Default is False.
+    mu_V_ratios (array-like, optional): Array of μ/|V| ratios for the control path overlay (required if include_path is True).
+    J_V_ratios (array-like, optional): Array of J/|V| ratios for the control path overlay (required if include_path is True).
+    times (array-like, optional): Array of time values corresponding to the control path, used for color mapping (required if include_path is True).
+    
+    Returns:
+    --------
+    None
+        Displays the generated plot.
+    """
+    
+    # Construct the filename based on the provided parameters.
+    filename = f"{gap_or_sigma}_V_{sign_V}_N={N}_M={M}.csv"
+    
+    # Construct the full path to the CSV file.
+    file_path = os.path.join(data_folder_path, filename)
+
+    # Check if the file exists.
+    if not os.path.exists(file_path):
+        print(f"Error: File {file_path} not found.")
+        return
+
+    # Load the CSV file.
+    try:
+        data = np.genfromtxt(file_path, delimiter=",", skip_header=1)
+    except Exception as e:
+        print(f"Error loading file {file_path}: {e}")
+        return
+
+    # The CSV file columns are assumed to be: mu_V_ratio, J_V_ratio, value.
+    # Determine the unique coordinate values.
+    unique_mu = np.unique(data[:, 0])
+    unique_J = np.unique(data[:, 1])
+    
+    # Reshape the values into a grid of shape (len(unique_J), len(unique_mu)).
+    Z = data[:, 2].reshape(len(unique_J), len(unique_mu))
+    
+    # Transform data if plotting the energy gap.
+    if gap_or_sigma == "energy_gap":
+        # Avoid division by zero in case any gap value is zero.
+        with np.errstate(divide='ignore'):
+            Z = np.log(1 / Z)
+        plot_title = "Energy Gap"
+        color_label = r"$\log(1/\Delta E)$"
+    else:
+        plot_title = "Synthetic Distance"
+        color_label = r"$\sigma/M$"
+    
+    # Create a meshgrid for the pcolormesh plot (x-axis: J/|V|, y-axis: μ/|V|).
+    J_grid, mu_grid = np.meshgrid(unique_J, unique_mu, indexing='ij')
+    
+    # Generate the plot.
+    fig, ax = plt.subplots(figsize=(8, 6))
+    pcm = plt.pcolormesh(J_grid, mu_grid, Z, shading='auto', cmap='plasma')
+    
+    # Optionally overlay the control path.
+    if include_path:
+        from matplotlib.collections import LineCollection
+
+        points = np.array([J_V_ratios, mu_V_ratios]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        lc = LineCollection(segments, cmap='gist_rainbow', norm=plt.Normalize(times.min(), times.max()))
+        lc.set_array(times)
+        lc.set_linewidth(2)
+        ax.add_collection(lc)
+        cbar = fig.colorbar(lc, ax=ax, label='t/|V|')
+        ax.set_xlabel("J/|V|")
+        ax.set_ylabel("μ/|V|")
+    
+    ax.set_ylim(0, 5)
+    ax.set_xlim(-5, 5)
+    
+    sign_str = r"$V > 0$" if sign_V == "positive" else r"$V < 0$"
+    plt.title(f"{plot_title}: $N={N}$, $M={M}$, {sign_str}")
+    plt.xlabel(r"$J/|V|$")
+    plt.ylabel(r"$\mu/|V|$")
+    plt.colorbar(pcm, label=color_label)
+    plt.tight_layout()
+    plt.show()
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
