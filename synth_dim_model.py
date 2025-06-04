@@ -484,7 +484,7 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None, chemical_potential_loc = 0):
+def old_create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 2, initial_state = None, chemical_potential_loc = 0):
     """
     Constructs optimized piecewise linear paths for the control parameters J/|V| and μ/|V|.
     
@@ -619,6 +619,94 @@ def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, m
     J_V_path = np.interp(times_dense, t_control_opt, J_control_opt)
     mu_V_path = np.interp(times_dense, t_control_opt, mu_control_opt)
     
+    obj_value = result.fun
+    return (times_dense, J_V_path, mu_V_path, obj_value, opt_params, t_control_opt, J_control_opt, mu_control_opt)
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, initial_guess=None):
+
+    times_dense = np.arange(0, T + dt, dt)
+    n_points = num_control_points
+    n_int = n_points - 2
+
+    # If initial_guess provided, use it; else use linear interpolation
+    if initial_guess is not None:
+        x0 = initial_guess
+        # Optionally, validate length of initial_guess matches expected
+        expected_len = 3 * n_int
+        if len(x0) != expected_len:
+            raise ValueError(f"initial_guess length {len(x0)} does not match expected {expected_len}")
+    else:
+        J_initial_guess = np.linspace(J_V_init, J_V_final, n_points)[1:-1]
+        mu_initial_guess = np.linspace(mu_V_init, mu_V_final, n_points)[1:-1]
+        t_initial_guess = T * np.linspace(0, 1, n_points)[1:-1]
+        x0 = np.concatenate((J_initial_guess, mu_initial_guess, t_initial_guess))
+
+    eps = 1e-3
+    cons = []
+    cons.append({'type': 'ineq', 'fun': lambda x: x[2*n_int] - eps})
+    for i in range(1, n_int):
+        cons.append({'type': 'ineq', 'fun': lambda x, i=i: x[2*n_int + i] - x[2*n_int + i - 1] - eps})  
+    cons.append({'type': 'ineq', 'fun': lambda x: T - x[2*n_int + n_int - 1] - eps}) 
+
+    # mu must decrease monotonically
+    for i in range(1, n_int):
+        cons.append({'type': 'ineq', 'fun': lambda x, i=i: x[n_int + i - 1] - x[n_int + i] - eps})
+
+    loop_weight = 0.1
+
+    def objective(x):
+        J_int = x[:n_int]
+        mu_int = x[n_int:2*n_int]
+        t_int = x[2*n_int:3*n_int]
+
+        J_control = np.concatenate(([J_V_init], J_int, [J_V_final]))
+        mu_control = np.concatenate(([mu_V_init], mu_int, [mu_V_final]))
+        t_control = np.concatenate(([0.0], t_int, [T]))
+
+        J_path_dense = np.interp(times_dense, t_control, J_control)
+        mu_path_dense = np.interp(times_dense, t_control, mu_control)
+
+        negative_mu_penalty = np.sum(np.abs(np.minimum(0, mu_path_dense)))
+        negative_J_penalty = np.sum(np.abs(np.minimum(0, J_path_dense)))
+
+        delta_Js = np.diff(J_control)
+        delta_mus = np.diff(mu_control)
+        path_length = np.sum(np.sqrt(delta_Js**2 + delta_mus**2))
+        straight_line_distance = np.sqrt((J_V_final - J_V_init)**2 + (mu_V_final - mu_V_init)**2)
+        loop_penalty = loop_weight * (path_length - straight_line_distance)
+
+        hamiltonians = []
+        for i, t in enumerate(times_dense):
+            mu = np.abs(V) * mu_path_dense[i]
+            J = np.abs(V) * J_path_dense[i]
+            ham = construct_hamiltonian(N, M, V, mu, J)
+            hamiltonians.append(ham)
+
+        _, _, _, _, _, calculate_ground_state_manifold_overlaps = simulate_hamiltonian_time_evolution(hamiltonians, times_dense)
+        ground_state_fidelity = calculate_ground_state_manifold_overlaps[-1]
+        ground_state_infidelity = 1 - ground_state_fidelity
+
+        return ground_state_infidelity + negative_J_penalty + negative_mu_penalty + loop_penalty
+
+    result = minimize(objective, x0, method='SLSQP', constraints=cons, options={'maxiter': 1000, 'ftol': 1e-9, 'disp': True})
+
+    #print(result.message)
+    print("Success:", result.success)
+
+    opt_params = result.x
+    J_int_opt = opt_params[:n_int]
+    mu_int_opt = opt_params[n_int:2*n_int]
+    t_int_opt = opt_params[2*n_int:3*n_int]
+
+    J_control_opt = np.concatenate(([J_V_init], J_int_opt, [J_V_final]))
+    mu_control_opt = np.concatenate(([mu_V_init], mu_int_opt, [mu_V_final]))
+    t_control_opt = np.concatenate(([0.0], t_int_opt, [T]))
+
+    J_V_path = np.interp(times_dense, t_control_opt, J_control_opt)
+    mu_V_path = np.interp(times_dense, t_control_opt, mu_control_opt)
+
     obj_value = result.fun
     return (times_dense, J_V_path, mu_V_path, obj_value, opt_params, t_control_opt, J_control_opt, mu_control_opt)
 

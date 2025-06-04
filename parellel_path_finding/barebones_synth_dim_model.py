@@ -272,143 +272,101 @@ def simulate_hamiltonian_time_evolution(hamiltonians, times, initial_state=None)
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, alpha = 1):
-    """
-    Constructs optimized piecewise linear paths for the control parameters J/|V| and μ/|V|.
-    
-    This function sets up and solves an optimization problem in which both the intermediate control values 
-    and the corresponding times are optimized. A dense time grid is generated for evaluation, and the objective 
-    function includes penalties for rapid (non-adiabatic) changes, negative μ/|V| values, and lack of smoothness.
-    A non-linear (quadratic) initial guess for the intermediate times is used to bias the evolution towards 
-    spending more time near the end, where μ/|V| is small.
-    
-    Parameters:
-    N (int): Number of particles or spins in the system.
-    M (int): Local Hilbert space dimension.
-    T (float): Total evolution time.
-    dt (float): Time step for the dense evaluation grid.
-    V (float): Interaction strength or scaling parameter in the Hamiltonian.
-    J_V_init (float): Initial value of the ratio J/|V|.
-    J_V_final (float): Final value of the ratio J/|V|.
-    mu_V_init (float): Initial value of the ratio μ/|V|.
-    mu_V_final (float): Final value of the ratio μ/|V|.
-    num_control_points (int): Total number of control points (including the fixed endpoints).
-    
-    Returns:
-    times_dense (np.ndarray): Dense time grid used for evaluation.
-    J_V_path (np.ndarray): Optimized J/|V| path evaluated on the dense time grid.
-    mu_V_path (np.ndarray): Optimized μ/|V| path evaluated on the dense time grid.
-    obj_value (float): Final objective value from the optimization.
-    opt_params (np.ndarray): Optimized parameter vector containing intermediate control values and times.
-    t_control_opt (np.ndarray): Full set of optimized control times, including the endpoints.
-    J_control_opt (np.ndarray): Optimized control values for J/|V| including the endpoints.
-    mu_control_opt (np.ndarray): Optimized control values for μ/|V| including the endpoints.
-    """
-    
-    # Dense time grid for evaluation.
+def new_create_optimal_piecewise_linear_paths(N, M, T, dt, V, J_V_init, J_V_final, mu_V_init, mu_V_final, num_control_points, initial_guess=None):
+    import numpy as np
+    from scipy.optimize import minimize
+
     times_dense = np.arange(0, T + dt, dt)
-    
-    # Number of control points and free (intermediate) points.
     n_points = num_control_points
     n_int = n_points - 2
 
-    # Initial guesses for the control values (linearly spaced between endpoints).
-    J_initial_guess = np.linspace(J_V_init, J_V_final, n_points)[1:-1]
-    mu_initial_guess = np.linspace(mu_V_init, mu_V_final, n_points)[1:-1]
-    
-    # Non-linear initial guess for intermediate times: more time allocated toward the end.
-    t_initial_guess = T * (np.linspace(0, 1, n_points)[1:-1] ** alpha)
+    # If initial_guess provided, use it; else use linear interpolation
+    if initial_guess is not None:
+        x0 = initial_guess
+        # Optionally, validate length of initial_guess matches expected
+        expected_len = 3 * n_int
+        if len(x0) != expected_len:
+            raise ValueError(f"initial_guess length {len(x0)} does not match expected {expected_len}")
+    else:
+        J_initial_guess = np.linspace(J_V_init, J_V_final, n_points)[1:-1]
+        mu_initial_guess = np.linspace(mu_V_init, mu_V_final, n_points)[1:-1]
+        t_initial_guess = T * np.linspace(0, 1, n_points)[1:-1]
+        x0 = np.concatenate((J_initial_guess, mu_initial_guess, t_initial_guess))
 
-    # Combine intermediate control values and times into one vector.
-    x0 = np.concatenate((J_initial_guess, mu_initial_guess, t_initial_guess))
-    
-    # A small buffer to ensure strict ordering of times.
     eps = 1e-3
-
-    # Constraints for the intermediate times: they must be strictly between 0 and T and in ascending order.
     cons = []
-    cons.append({'type': 'ineq', 'fun': lambda x: x[2*n_int] - eps})
+    cons.append({'type': 'ineq', 'fun': lambda x: x[2*n_int] - eps})  # t0 > 0
     for i in range(1, n_int):
-        cons.append({
-            'type': 'ineq',
-            'fun': lambda x, i=i: x[2*n_int + i] - x[2*n_int + i - 1] - eps
-        })
-    cons.append({'type': 'ineq', 'fun': lambda x: T - x[2*n_int + n_int - 1] - eps})
-    
-    # Weights for the penalty terms.
-    lambda_adiabatic = 0.25       
-    lambda_smooth_J = 0.1 
-    lambda_smooth_mu = 0.1
-    
+        cons.append({'type': 'ineq', 'fun': lambda x, i=i: x[2*n_int + i] - x[2*n_int + i - 1] - eps})  # ascending times
+    cons.append({'type': 'ineq', 'fun': lambda x: T - x[2*n_int + n_int - 1] - eps})  # last time < T
+
+    # mu must decrease monotonically
+    for i in range(1, n_int):
+        cons.append({'type': 'ineq', 'fun': lambda x, i=i: x[n_int + i - 1] - x[n_int + i] - eps})
+
+    loop_weight = 0.1
+
     def objective(x):
-        # Unpack the optimization vector.
         J_int = x[:n_int]
         mu_int = x[n_int:2*n_int]
         t_int = x[2*n_int:3*n_int]
-        
-        # Reconstruct full control arrays including fixed endpoints.
+
         J_control = np.concatenate(([J_V_init], J_int, [J_V_final]))
         mu_control = np.concatenate(([mu_V_init], mu_int, [mu_V_final]))
         t_control = np.concatenate(([0.0], t_int, [T]))
-        
-        # Build dense paths using linear interpolation.
+
         J_path_dense = np.interp(times_dense, t_control, J_control)
         mu_path_dense = np.interp(times_dense, t_control, mu_control)
-        
-        # Penalty for any negative μ/|V| values.
-        penalty = np.sum(np.abs(np.minimum(0, mu_path_dense)))
-        
-        # Smoothness penalty using discrete second differences.
-        smoothness_penalty_J = lambda_smooth_J * np.sum(np.diff(J_control, 2)**2)
-        smoothness_penalty_mu = lambda_smooth_mu * np.sum(np.diff(mu_control, 2)**2)
-        smoothness_penalty = smoothness_penalty_J + smoothness_penalty_mu
-        
-        # Construct Hamiltonians at each point in the dense time grid.
+
+        negative_mu_penalty = np.sum(np.abs(np.minimum(0, mu_path_dense)))
+        negative_J_penalty = np.sum(np.abs(np.minimum(0, J_path_dense)))
+
+        delta_Js = np.diff(J_control)
+        delta_mus = np.diff(mu_control)
+        path_length = np.sum(np.sqrt(delta_Js**2 + delta_mus**2))
+        straight_line_distance = np.sqrt((J_V_final - J_V_init)**2 + (mu_V_final - mu_V_init)**2)
+        loop_penalty = loop_weight * (path_length - straight_line_distance)
+
         hamiltonians = []
         for i, t in enumerate(times_dense):
             ham = construct_rescaled_hamiltonian(N, M, V,
                                                  mu_V_ratio=mu_path_dense[i],
                                                  J_V_ratio=J_path_dense[i])
             hamiltonians.append(ham)
-        
-        # Adiabaticity penalty: discourages rapid changes in the Hamiltonian.
-        adiabatic_penalty = 0.0
-        for i in range(len(times_dense) - 1):
-            # Finite difference approximation for the derivative of the control parameters.
-            dJ = J_path_dense[i+1] - J_path_dense[i]
-            dmu = mu_path_dense[i+1] - mu_path_dense[i]
-            dH_norm = np.sqrt(dJ**2 + dmu**2)
-            # Compute the energy gap using the instantaneous Hamiltonian.
-            energies, _ = exact_diagonalize(hamiltonians[i])
-            gap = energies[1] - energies[0]
-            adiabatic_penalty += (dH_norm**2 / gap**2) * (times_dense[i+1] - times_dense[i])
-        adiabatic_penalty *= lambda_adiabatic
-        
-        # Simulate the time evolution and compute the ground state infidelity.
+
         _, _, _, _, _, calculate_ground_state_manifold_overlaps = simulate_hamiltonian_time_evolution(hamiltonians, times_dense)
         ground_state_fidelity = calculate_ground_state_manifold_overlaps[-1]
         ground_state_infidelity = 1 - ground_state_fidelity
-        
-        return ground_state_infidelity + penalty + smoothness_penalty + adiabatic_penalty
 
-    # Optimize the control parameters using SLSQP to enforce the constraints.
-    result = minimize(objective, x0, method='SLSQP', constraints=cons)
+        return ground_state_infidelity + negative_J_penalty + negative_mu_penalty + loop_penalty
+
+    result = minimize(
+        objective,
+        x0,
+        method='SLSQP',
+        constraints=cons,
+        options={
+            'maxiter': 1000,
+            'ftol': 1e-9,
+            'disp': True
+        }
+    )
+
+    print(result.message)
+    print("Success:", result.success)
+
     opt_params = result.x
-
-    # Extract the optimized intermediate values.
     J_int_opt = opt_params[:n_int]
     mu_int_opt = opt_params[n_int:2*n_int]
     t_int_opt = opt_params[2*n_int:3*n_int]
 
-    # Construct full control arrays including endpoints.
     J_control_opt = np.concatenate(([J_V_init], J_int_opt, [J_V_final]))
     mu_control_opt = np.concatenate(([mu_V_init], mu_int_opt, [mu_V_final]))
     t_control_opt = np.concatenate(([0.0], t_int_opt, [T]))
 
-    # Generate the optimized dense paths.
     J_V_path = np.interp(times_dense, t_control_opt, J_control_opt)
     mu_V_path = np.interp(times_dense, t_control_opt, mu_control_opt)
-    
+
     obj_value = result.fun
     return (times_dense, J_V_path, mu_V_path, obj_value, opt_params, t_control_opt, J_control_opt, mu_control_opt)
 
