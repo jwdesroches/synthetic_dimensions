@@ -5,8 +5,6 @@
 import numpy as np
 from scipy.sparse.linalg import eigsh
 from scipy.linalg import expm
-import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
 from scipy.optimize import minimize
 import sys
 import os

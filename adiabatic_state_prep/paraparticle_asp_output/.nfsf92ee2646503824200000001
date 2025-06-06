@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/donglab/desroches.j/paraparticle_case/input/input_1.py", line 1, in <module>
+    from barebones_synth_dim_model import *
+ModuleNotFoundError: No module named 'barebones_synth_dim_model'
