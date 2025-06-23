@@ -1,0 +1,39 @@
+N: 3
+M: 5
+V: 1
+J_V_final: 0.5
+T: 13.75
+
+ROUGH PASS STARTING
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: 0.9999877454277606
+            Iterations: 1
+            Function evaluations: 31
+            Gradient evaluations: 1
+Success: True
+ROUGH PASS COMPLETED
+
+REFINED PASS STARTING
+Optimization terminated successfully    (Exit mode 0)
+            Current function value: 0.6691705404242747
+            Iterations: 131
+            Function evaluations: 4145
+            Gradient evaluations: 131
+Success: True
+REFINED PASS COMPLETED
+
+GROUND_STATE_OVERLAP: 0.343030
+ENERGY_DIFFERENCE: 0.453550
+
+OPTIMAL_J_VALUES:
+ [0.1        0.25203401 0.40731751 0.56004222 0.71372614 0.95958186
+ 0.95969075 1.02194065 1.02753347 1.02734087 0.71701506 0.5       ]
+
+OPTIMAL_MU_VALUES:
+ [10.          9.10655249  8.19401322  7.29756136  6.39649466  4.9568297
+  4.9558297   3.59314656  2.77087848  2.76987848  1.627413    0.        ]
+
+OPTIMAL_TIMES:
+ [0.00000000e+00 1.35962748e-02 1.48359870e-02 2.88321512e-02
+ 3.57991189e-02 4.99135849e-02 4.00034767e-01 4.68147099e-01
+ 5.98556674e-01 1.17011205e+00 1.19972041e+00 1.37500000e+01]
