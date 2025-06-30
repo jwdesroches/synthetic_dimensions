@@ -5,6 +5,7 @@
 import numpy as np
 from scipy.sparse.linalg import eigsh
 from scipy.linalg import expm
+from scipy.linalg import eigh
 from scipy.optimize import minimize
 import sys
 import os
@@ -78,7 +79,7 @@ def create_H_key(formatted_states):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def exact_diagonalize(H, use_sparse = False, k = 1):
+def old_exact_diagonalize(H, use_sparse = False, k = 1):
     """
     Diagonalizes a Hermitian matrix using numpy's `eigh()` method.
 
@@ -103,6 +104,33 @@ def exact_diagonalize(H, use_sparse = False, k = 1):
     else:
         eigenvalues, eigenvectors = np.linalg.eigh(H)
 
+        return eigenvalues, [eigenvectors[:, i] for i in range(H.shape[0])]
+    
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def exact_diagonalize(H, use_sparse = False, k = 1):
+    """
+    Diagonalizes a Hermitian matrix using scipy's `eigh()` method. Faster than numpy's `eigh()` method.
+
+    Parameters:
+    H (np.ndarray): Hermitian matrix to diagonalize.
+    verbose (bool): If True, prints the eigenvalues and eigenvectors.
+    check_reconstruction (bool): If True, checks whether the matrix is faithfully reconstructed.
+
+    Returns:
+    np.ndarray: Eigenvalues of the matrix.
+    list: List of eigenvectors of the matrix.
+    """
+    if not np.allclose(np.conjugate(H.T), H):
+            print("The matrix is not Hermitian.")
+            return None, None
+        
+    if use_sparse:
+        eigenvalues, eigenvectors = eigsh(H, k=k)
+        return eigenvalues, [eigenvectors[:, i] for i in range(k)]
+         
+    else:
+        eigenvalues, eigenvectors = eigh(H)
         return eigenvalues, [eigenvectors[:, i] for i in range(H.shape[0])]
     
 # --------------------------------------------------------------------------------------------------------------------------------------------
