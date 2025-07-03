@@ -135,7 +135,7 @@ def exact_diagonalize(H, use_sparse = False, k = 1):
     
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
-def construct_hamiltonian(N, M, J, V):
+def old_construct_hamiltonian(N, M, J, V):
     """
     Constructs the J-V Hamiltonian matrix.
 
