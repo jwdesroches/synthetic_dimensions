@@ -237,6 +237,19 @@ def sigma_ij_operator(i, j, states, N, M):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
+def single_site_number_operator(N, M, site_index, synth_level, states):
+    """placeholder definition"""
+    dim = M**N
+    number_operator_matrix = np.zeros((dim, dim), dtype=np.complex128)
+    
+    for k in range(dim):
+        if states[k][site_index] == synth_level:
+            number_operator_matrix[k,k] = 1
+             
+    return number_operator_matrix
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
 def calculate_specific_heat(beta, energy_eigenvalues):
     """placeholder definition"""
     E0 = np.min(energy_eigenvalues)
@@ -299,6 +312,17 @@ def construct_ground_state_manifold(eigenvalues, eigenvectors, epsilon = 1e-9):
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
+def construct_ground_state_projector(eigenvalues, eigenvectors, epsilon=1e-9):
+    """Placeholder definition."""
+    ground_energy = np.min(eigenvalues)
+    indices = np.where(np.abs(eigenvalues - ground_energy) <= epsilon)[0]
+    degenerate_states = [eigenvectors[i] for i in indices]
+    V = np.column_stack(degenerate_states)
+    P = V @ V.conj().T
+    return P, degenerate_states
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
 def calculate_ground_state_manifold_overlap(state, ground_state_manifold):
     """Placeholder definition."""
     projector = np.zeros((len(ground_state_manifold[0]), len(ground_state_manifold[0])), dtype=complex)
@@ -315,6 +339,19 @@ def calculate_ground_state_manifold_overlap(state, ground_state_manifold):
         ground_state_manifold_overlap = np.real(ground_state_manifold_overlap)
 
     return ground_state_manifold_overlap
+
+# --------------------------------------------------------------------------------------------------------------------------------------------
+
+def compute_entanglement_entropy(N, M, psi, cut_site):
+    """Placeholder definition."""
+    psi_tensor = psi.reshape([M] * N)
+    d_left = M ** cut_site
+    d_right = M ** (N - cut_site)
+    psi_matrix = psi_tensor.reshape(d_left, d_right)
+    s = np.linalg.svd(psi_matrix, compute_uv=False)
+    s = s / np.linalg.norm(s)
+    s2 = s**2
+    return -np.sum(s2 * np.log(s2 + 1e-12))
 
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -405,6 +442,100 @@ def construct_rescaled_hamiltonian(N, M, V, mu_V_ratio, J_V_ratio, theta = 0, bo
     H = construct_hamiltonian(N, M, V, mu, J, theta, boundary_conditions, chemical_potential_loc)
     H_tilde = H/np.abs(V)
     return H_tilde
+
+# ------------------------------------------------------------------------------------------------------------------------------------------
+
+def construct_nnn_hamiltonian(N, M, V1, mu, J, V2 = 0, boundary_conditions = "OBC", chemical_potential_loc = 0):
+    """Placeholder definition."""        
+    dim = M**N
+    H = np.zeros((dim, dim), dtype=np.complex128)
+
+    # Precompute powers of M for faster state-to-index conversion
+    M_powers = np.array([M**i for i in range(N)])
+
+    def index_to_state(index):
+        return np.array([(index // M_powers[i]) % M for i in range(N-1, -1, -1)])
+    
+    # Helper function to convert a state representation (array of states) back to an index
+    def state_to_index(state):
+        return np.dot(state, M_powers[::-1])
+
+    # Apply the chemical potential term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            if state[j] == chemical_potential_loc:
+                H[alpha, alpha] -= mu
+                    
+    # Apply the tunneling term
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        for j in range(N):
+            for n in range(M):
+                if state[j] == n:
+                    if n == 0:
+                        if boundary_conditions == "PBC":
+                            new_state = state.copy()
+                            new_state[j] = M - 1
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] -= J
+                            H[beta, alpha] -= J
+                        elif boundary_conditions == "OBC":
+                            pass
+                        
+                    else:
+                        new_state = state.copy()
+                        new_state[j] = n - 1
+                        beta = state_to_index(new_state)
+                        
+                        H[alpha, beta] -= J
+                        H[beta, alpha] -= J
+
+    # Nearest-neighbor (V) and next-nearest-neighbor (V2)
+    for alpha in range(dim):
+        state = index_to_state(alpha)
+        
+        # Nearest-neighbor (V)
+        for i in range(N - 1):
+            j = i + 1
+            for n in range(M):
+                if n == 0:
+                    if boundary_conditions == "PBC":
+                        if state[i] == 0 and state[j] == M - 1:
+                            new_state = state.copy()
+                            new_state[i], new_state[j] = M - 1, 0
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] += V1
+                            H[beta, alpha] += V1  
+                else:
+                    if state[i] == n and state[j] == n - 1:
+                        new_state = state.copy()
+                        new_state[i], new_state[j] = n - 1, n
+                        beta = state_to_index(new_state)
+                        H[alpha, beta] += V1
+                        H[beta, alpha] += V1 
+
+        # Next-nearest-neighbor (V2)
+        for i in range(N - 2):
+            j = i + 2
+            for n in range(M):
+                if n == 0:
+                    if boundary_conditions == "PBC" and N > 2:
+                        if state[i] == 0 and state[j] == M - 1:
+                            new_state = state.copy()
+                            new_state[i], new_state[j] = M - 1, 0
+                            beta = state_to_index(new_state)
+                            H[alpha, beta] += V2
+                            H[beta, alpha] += V2  
+                else:
+                    if state[i] == n and state[j] == n - 1:
+                        new_state = state.copy()
+                        new_state[i], new_state[j] = n - 1, n
+                        beta = state_to_index(new_state)
+                        H[alpha, beta] += V2
+                        H[beta, alpha] += V2  
+
+    return H
 
 # ------------------------------------------------------------------------------------------------------------------------------------------
 
